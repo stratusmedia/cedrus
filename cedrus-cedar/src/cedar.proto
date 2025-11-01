@@ -1,0 +1,337 @@
+syntax = "proto3";
+
+package cedar;
+
+message EntityUid {
+  string type = 1;
+  string name = 2;
+}
+
+message ExtensionFn {
+  string fn = 1;
+  string arg = 2;
+}
+
+message EntityUidEscape {
+  string type = 1;
+  string name = 2;
+}
+
+message ExtensionFnEscape {
+  string fn = 1;
+  string arg = 2;
+}
+
+message Entity {
+  EntityUid uid = 1;
+  map<string, EntityAttr> attrs = 2;
+  repeated EntityUid parents = 3;
+  map<string, EntityAttr> tags = 4;
+
+  message EntityAttr {
+    oneof value {
+      bool b = 1;
+      int64 i = 2;
+      string s = 3;
+      Set set = 4;
+      Record record = 5;
+      EntityUid euid = 6;
+      ExtensionFn efn = 7;
+      EntityUidEscape euide = 8;
+      ExtensionFnEscape efne = 9;
+    }
+  }
+
+  message Set { repeated EntityAttr elements = 1; }
+
+  message Record { map<string, EntityAttr> items = 1; }  
+}
+
+message Schema {
+  map<string, Namespace> ns = 1;
+
+  message Long { bool required = 1; }
+
+  message String { bool required = 1; }
+
+  message Boolean { bool required = 1; }
+
+  message Set {
+    TypeJson element = 1;
+    bool required = 2;
+  }
+
+  message Record {
+    map<string, TypeJson> attributes = 1;
+    bool required = 2;
+  }
+
+  message Entity {
+    string name = 1;
+    bool required = 2;
+  }
+
+  message Extension {
+    string name = 1;
+    bool required = 2;
+  }
+
+  message EntityOrCommon {
+    string name = 1;
+    bool required = 2;
+  }
+
+  message TypeJson {
+    oneof value {
+      Long l = 1;
+      String s = 2;
+      Boolean b = 3;
+      Set set = 4;
+      Record record = 5;
+      Entity entity = 6;
+      Extension ext = 7;
+      EntityOrCommon eorc = 8;
+    }
+  }
+
+  message EntityType {
+    repeated string memberOfTypes = 1;
+    TypeJson shape = 2;
+    TypeJson tags = 3;
+    map<string, string> annotations = 4;
+  }
+
+  message AppliesTo {
+    repeated string principalTypes = 1;
+    repeated string resourceTypes = 2;
+    TypeJson context = 3;
+  }
+
+  message Action {
+    repeated string memberOf = 1;
+    AppliesTo appliesTo = 2;
+    map<string, string> annotations = 4;
+  }
+
+  message Namespace {
+    map<string, EntityType> entityTypes = 1;
+    map<string, Action> actions = 2;
+    map<string, TypeJson> commonTypes = 3;
+  }
+}
+
+enum SlotId {
+  principal = 0;
+  resource = 1;
+}
+
+message EntityOrSlot {
+  EntityUid entity = 1;
+  SlotId slot = 2;
+}
+
+message PrincipalOp {
+  Operator op = 1;
+  EntityUid entity = 2;
+  SlotId slot = 3;
+  string entityType = 4;
+  EntityOrSlot eors = 5;
+
+  enum Operator {
+    all = 0;
+    eq = 1;
+    in = 2;
+    is = 3;
+  }
+}
+
+message ResourceOp {
+  Operator op = 1;
+  EntityUid entity = 2;
+  SlotId slot = 3;
+  string entityType = 4;
+  EntityOrSlot eors = 5;
+
+  enum Operator {
+    all = 0;
+    eq = 1;
+    in = 2;
+    is = 3;
+  }
+}
+
+message ActionOp {
+  Operator op = 1;
+  EntityUid entity = 2;
+  repeated EntityUid entities = 3;
+
+  enum Operator {
+    all = 0;
+    eq = 1;
+    in = 2;
+  }
+}
+
+message JsonExpr {
+  oneof expr {
+    ValueExpr value = 1;
+    VarValue var = 2;
+    SlotId slot = 3;
+
+    NegExpr neg = 4;
+    NegExpr bang = 5;
+
+    BinaryExpr eq = 6;
+    BinaryExpr neq = 7;
+    BinaryExpr in = 8;
+    BinaryExpr lt = 9;
+    BinaryExpr lte = 10;
+    BinaryExpr gt = 11;
+    BinaryExpr gte = 12;
+    BinaryExpr and = 13;
+    BinaryExpr or = 14;
+    BinaryExpr plus = 15;
+    BinaryExpr minus = 16;
+    BinaryExpr mul = 17;
+    BinaryExpr contains = 18;
+    BinaryExpr containsAll = 19;
+    BinaryExpr containsAny = 20;
+    BinaryExpr hasTag = 21;
+    BinaryExpr getTag = 22;
+
+    HasExpr has = 23;
+    HasExpr dot = 24;
+
+    IsExpr is = 25;
+
+    LikeExpr like = 26;
+
+    IfThenElseExpr ifThenElse = 27;
+
+    Set set = 28;
+    Record record = 29;
+
+    Set decimal = 30;
+    Set ip = 31;
+    Set isInRange = 32;
+  }
+
+  message ValueExpr {
+    oneof value {
+      bool b = 1;
+      int64 i = 2;
+      string s = 3;
+      Set set = 4;
+      Record record = 5;
+      EntityUid euid = 6;
+      ExtensionFn efn = 7;
+    }
+  
+    message Set {
+      repeated JsonExpr set = 1;
+    }
+  
+    message Record {
+      map<string, JsonExpr> record = 1;
+    }
+  }
+
+  enum VarValue {
+    principal = 0;
+    action = 1;
+    resource = 2;
+    context = 3;
+  }
+  
+  message NegExpr {
+    JsonExpr arg = 1;
+  }
+
+  message BinaryExpr {
+    JsonExpr left = 1;
+    JsonExpr right = 2;
+  }
+
+  message HasExpr {
+    JsonExpr left = 1;
+    string attr = 2;
+  }
+
+  message IsExpr {
+    JsonExpr left = 1;
+    string entityType = 2;
+    EntityUid in = 3;
+  }
+
+  message LikeExpr {
+    JsonExpr left = 1;
+    string pattern = 2;
+  }
+
+  message IfThenElseExpr {
+    JsonExpr if = 1;
+    JsonExpr then = 2;
+    JsonExpr else = 3;
+  }
+
+  message Set {
+    repeated JsonExpr set = 1;
+  }
+
+  message Record {
+    map<string, JsonExpr> record = 1;
+  }
+
+}
+
+enum ConditionKind {
+  when = 0;
+  unless = 1;
+}
+
+message Condition {
+  ConditionKind kind = 1;
+  JsonExpr body = 2;
+}
+
+enum Effect {
+  permit = 0;
+  forbid = 1;
+}
+
+message Policy {
+  Effect effect = 1;
+  PrincipalOp principal = 2;
+  ActionOp action = 3;
+  ResourceOp resource = 4;
+  repeated Condition conditions = 5;
+  map<string, string> annotations = 6;
+}
+
+message Template {
+  Effect effect = 1;
+  PrincipalOp principal = 2;
+  ActionOp action = 3;
+  ResourceOp resource = 4;
+  repeated Condition conditions = 5;
+  map<string, string> annotations = 6;
+}
+
+message EntityValue {
+  oneof value {
+    EntityUid euid = 1;
+    EntityUidEscape ee = 2;
+  }
+}
+
+message TemplateLink {
+  string templateId = 1;
+  string newId = 2;
+  map<string, EntityValue> values = 3;
+}
+
+message PolicySet {
+  map<string, Policy> staticPolicies = 1;
+  map<string, Template> templates = 2;
+  repeated TemplateLink templateLinks = 3;
+}

@@ -1,0 +1,170 @@
+[
+    {
+        "effect": "permit",
+        "principal": {
+            "op": "All"
+        },
+        "action": {
+            "op": "in",
+            "entities": [
+                {
+                    "type": "TinyTodo::Action",
+                    "id": "CreateList"
+                },
+                {
+                    "type": "TinyTodo::Action",
+                    "id": "GetLists"
+                }
+            ]
+        },
+        "resource": {
+            "op": "==",
+            "entity": {
+                "type": "TinyTodo::Application",
+                "id": "TinyTodo"
+            }
+        },
+        "conditions": [],
+        "annotations": {
+            "id": "test1"
+        }
+    },
+    {
+        "effect": "permit",
+        "principal": {
+            "op": "All"
+        },
+        "action": {
+            "op": "All"
+        },
+        "resource": {
+            "op": "is",
+            "entity_type": "TinyTodo::List"
+        },
+        "conditions": [
+            {
+                "kind": "when",
+                "body": {
+                    "==": {
+                        "left": {
+                            ".": {
+                                "left": {
+                                    "Var": "resource"
+                                },
+                                "attr": "owner"
+                            }
+                        },
+                        "right": {
+                            "Var": "principal"
+                        }
+                    }
+                }
+            }
+        ]
+    },
+    {
+        "effect": "permit",
+        "principal": {
+            "op": "All"
+        },
+        "action": {
+            "op": "==",
+            "entity": {
+                "type": "TinyTodo::Action",
+                "id": "GetList"
+            }
+        },
+        "resource": {
+            "op": "All"
+        },
+        "conditions": [
+            {
+                "kind": "when",
+                "body": {
+                    "||": {
+                        "left": {
+                            "in": {
+                                "left": {
+                                    "Var": "principal"
+                                },
+                                "right": {
+                                    ".": {
+                                        "left": {
+                                            "Var": "resource"
+                                        },
+                                        "attr": "readers"
+                                    }
+                                }
+                            }
+                        },
+                        "right": {
+                            "in": {
+                                "left": {
+                                    "Var": "principal"
+                                },
+                                "right": {
+                                    ".": {
+                                        "left": {
+                                            "Var": "resource"
+                                        },
+                                        "attr": "editors"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+    },
+    {
+        "effect": "permit",
+        "principal": {
+            "op": "All"
+        },
+        "action": {
+            "op": "in",
+            "entities": [
+                {
+                    "type": "TinyTodo::Action",
+                    "id": "UpdateList"
+                },
+                {
+                    "type": "TinyTodo::Action",
+                    "id": "CreateTask"
+                },
+                {
+                    "type": "TinyTodo::Action",
+                    "id": "UpdateTask"
+                },
+                {
+                    "type": "TinyTodo::Action",
+                    "id": "DeleteTask"
+                }
+            ]
+        },
+        "resource": {
+            "op": "All"
+        },
+        "conditions": [
+            {
+                "kind": "when",
+                "body": {
+                    "in": {
+                        "left": {
+                            "Var": "principal"
+                        },
+                        "right": {
+                            ".": {
+                                "left": {
+                                    "Var": "resource"
+                                },
+                                "attr": "editors"
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+    }
+]

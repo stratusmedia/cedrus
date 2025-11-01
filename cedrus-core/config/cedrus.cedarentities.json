@@ -1,0 +1,55 @@
+[
+    {
+        "uid": {
+            "type": "Cedrus::Group",
+            "id": "Admins"
+        },
+        "attrs": {},
+        "parents": [],
+        "tags": {}
+    },
+    {
+        "uid": {
+            "type": "Cedrus::Group",
+            "id": "Users"
+        },
+        "attrs": {},
+        "parents": [],
+        "tags": {}
+    },
+    {
+        "uid": {
+            "type": "Cedrus::User",
+            "id": "00000000-0000-0000-0000-000000000000"
+        },
+        "attrs": {
+            "enabled": true
+        },
+        "parents": [
+            {
+                "type": "Cedrus::Group",
+                "id": "Admins"
+            }
+        ],
+        "tags": {
+            "name": "Cedrus Admin User"
+        }
+    },
+    {
+        "uid": {
+            "type": "Cedrus::Project",
+            "id": "00000000-0000-0000-0000-000000000000"
+        },
+        "attrs": {
+            "enabled": true,
+            "owner": {
+                "type": "Cedrus::User",
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        "parents": [],
+        "tags": {
+            "name": "Cedrus Admin Project"
+        }
+    }
+]

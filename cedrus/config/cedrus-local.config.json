@@ -1,0 +1,35 @@
+{
+    "server": {
+        "port": 3000,
+        "host": "0.0.0.0",
+        "apiKey": "XXXXXXX"
+    },
+    "db": {
+        "couchDbConfig": {
+            "dbName": "cedrus",
+            "uri": "http://localhost:5984",
+            "username": "admin",
+            "password": "admin"
+        }
+    },
+    "identitySource": {
+        "configuration": {
+            "openIdConnectConfiguration": {
+                "issuer": "http://localhost:8080/realms/myrealm",
+                "tokenSelection": {
+                    "identityTokenOnly": {
+                        "clientIds": [
+                            "myclient"
+                        ],
+                        "principalIdClaim": "sub"
+                    }
+                },
+                "groupConfiguration": {
+                    "groupClaim": "groups",
+                    "groupEntityType": "Cedrus::Group"
+                }
+            }
+        },
+        "principalEntityType": "Cedrus::User"
+    }
+}

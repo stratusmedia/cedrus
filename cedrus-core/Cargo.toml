@@ -1,0 +1,44 @@
+[package]
+name = "cedrus-core"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Business logic and authorization engine for Cedrus."
+readme = "README.md"
+
+[dependencies]
+async-trait = { workspace = true }
+aws-config = { workspace = true }
+aws-sdk-dynamodb = { workspace = true }
+base64 = { workspace = true }
+cedar-policy = { workspace = true }
+cedrus-cedar = { version = "0.1.0", path="../cedrus-cedar" }
+chrono = { workspace = true }
+couch_rs = { workspace = true }
+dashmap = { workspace = true }
+jwt-authorizer = { workspace = true }
+openssl = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+rand = { workspace = true }
+redis = { workspace = true }
+serde = { workspace = true }
+serde_dynamo = { workspace = true }
+serde_json = { workspace = true }
+tokio =  { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+utoipa = { workspace = true }
+uuid = { workspace = true }
+
+[lib]
+path = "src/lib.rs" 
+bench = false
+test = false
+doc = true
+

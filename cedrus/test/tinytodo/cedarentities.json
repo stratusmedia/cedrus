@@ -1,0 +1,165 @@
+[
+    {
+        "uid": {
+            "type": "TinyTodo::User",
+            "id": "kesha"
+        },
+        "attrs": {
+            "location": "ABC17",
+            "joblevel": 5
+        },
+        "parents": [
+            {
+                "type": "TinyTodo::Team",
+                "id": "temp"
+            },
+            {
+                "type": "TinyTodo::Application",
+                "id": "TinyTodo"
+            }
+        ]
+    },
+    {
+        "uid": {
+            "type": "TinyTodo::User",
+            "id": "aaron"
+        },
+        "attrs": {
+            "location": "ABC17",
+            "joblevel": 5
+        },
+        "parents": [
+            {
+                "type": "TinyTodo::Team",
+                "id": "interns"
+            },
+            {
+                "type": "TinyTodo::Application",
+                "id": "TinyTodo"
+            }
+        ]
+    },
+    {
+        "uid": {
+            "type": "TinyTodo::User",
+            "id": "emina"
+        },
+        "attrs": {
+            "location": "DEF33",
+            "joblevel": 8
+        },
+        "parents": [
+            {
+                "type": "TinyTodo::Team",
+                "id": "admin"
+            },
+            {
+                "type": "TinyTodo::Application",
+                "id": "TinyTodo"
+            }
+        ]
+    },
+    {
+        "uid": {
+            "type": "TinyTodo::User",
+            "id": "andrew"
+        },
+        "attrs": {
+            "location": "XYZ77",
+            "joblevel": 5
+        },
+        "parents": [
+            {
+                "type": "TinyTodo::Application",
+                "id": "TinyTodo::TinyTodo"
+            },
+            {
+                "type": "TinyTodo::Team",
+                "id": "admin"
+            },
+            {
+                "type": "TinyTodo::Team",
+                "id": "temp"
+            }
+        ]
+    },
+    {
+        "uid": {
+            "type": "TinyTodo::Team",
+            "id": "temp"
+        },
+        "attrs": {},
+        "parents": [
+            {
+                "type": "TinyTodo::Application",
+                "id": "TinyTodo"
+            }
+        ]
+    },
+    {
+        "uid": {
+            "type": "TinyTodo::Team",
+            "id": "admin"
+        },
+        "attrs": {},
+        "parents": [
+            {
+                "type": "TinyTodo::Application",
+                "id": "TinyTodo"
+            }
+        ]
+    },
+    {
+        "uid": {
+            "type": "TinyTodo::Team",
+            "id": "interns"
+        },
+        "attrs": {},
+        "parents": [
+            {
+                "type": "TinyTodo::Application",
+                "id": "TinyTodo"
+            },
+            {
+                "type": "TinyTodo::Team",
+                "id": "temp"
+            }
+        ]
+    },
+    {
+        "uid": {
+            "type": "TinyTodo::Application",
+            "id": "TinyTodo"
+        },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "TinyTodo::List",
+            "id": "foo"
+        },
+        "attrs": {
+            "editors": {
+                "type": "TinyTodo::Team",
+                "id": "admin"
+            },
+            "name": "Foo",
+            "owner": {
+                "type": "TinyTodo::User",
+                "id": "emina"
+            },
+            "readers": {
+                "type": "TinyTodo::Team",
+                "id": "temp"
+            },
+            "tasks": []
+        },
+        "parents": [
+            {
+                "type": "TinyTodo::Application",
+                "id": "TinyTodo"
+            }
+        ]
+    }
+]

@@ -1,0 +1,261 @@
+{
+    "Cedrus": {
+        "commonTypes": {},
+        "entityTypes": {
+            "Group": {},
+            "User": {
+                "shape": {
+                    "type": "Record",
+                    "attributes": {
+                        "enabled": {
+                            "type": "Boolean"
+                        }
+                    }
+                },
+                "memberOfTypes": ["Group"],
+                "tags": {
+                    "type": "String"
+                }
+            },
+            "Project": {
+                "shape": {
+                    "type": "Record",
+                    "attributes": {
+                        "enabled": {
+                            "type": "Boolean"
+                        },
+                        "owner": {
+                            "type": "Entity",
+                            "name": "Cedrus::User"
+                        }
+                    }
+                },
+                "tags": {
+                    "type": "String"
+                }
+            }
+        },
+        "actions": {
+            "getProject": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "putProject": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "deleteProject": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "getProjectIdentitySource": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "putProjectIdentitySource": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "deleteProjectIdentitySource": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "getProjectSchema": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "putProjectSchema": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "deleteProjectSchema": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "getProjectEntities": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "postProjectEntities": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "deleteProjectEntities": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "getProjectPolicies": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "postProjectPolicies": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "deleteProjectPolicies": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "getProjectTemplates": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "postProjectTemplates": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "deleteProjectTemplates": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "getProjectTemplateLinks": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "postProjectTemplateLinks": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "deleteProjectTemplateLinks": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            },
+            "postProjectIsAuthorized": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Project"
+                    ]
+                }
+            }
+        }
+    }
+}
