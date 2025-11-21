@@ -3,11 +3,13 @@
 use std::error::Error;
 
 use axum::{
-    extract::{rejection::JsonRejection, FromRequest},
+    extract::{FromRequest, rejection::JsonRejection},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use cedrus_core::{Query, Selector};
+use cedrus_cedar::EntityUid;
+use cedrus_core::{Query, Selector, core::cedrus::Cedrus};
+use quick_cache::sync::Cache;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -25,6 +27,20 @@ where
     fn into_response(self) -> Response {
         axum::Json(self.0).into_response()
     }
+}
+
+pub struct AppState {
+    pub cedrus: Cedrus,
+    pub tokens: Cache<String, EntityUid>
+}
+
+impl AppState {
+    pub fn new(cedrus: Cedrus) -> Self {
+        Self {
+            cedrus,
+            tokens: Cache::new(1000)
+        }
+    }    
 }
 
 // The kinds of errors we can hit in our application.
@@ -280,11 +296,11 @@ impl Into<Query> for QueryParams {
     fn into(self) -> Query {
         Query {
             selector: self.selector,
-            sort: Vec::new(), // self.sort.unwrap_or_default(),
+            sort: Vec::new(),   // self.sort.unwrap_or_default(),
             fields: Vec::new(), // self.fields.unwrap_or_default(),
             start_key: self.start_key,
             limit: self.limit.unwrap_or(0),
-            skip: 0, // self.skip.unwrap_or(0),
+            skip: 0,     // self.skip.unwrap_or(0),
             index: None, //self.index,
         }
     }

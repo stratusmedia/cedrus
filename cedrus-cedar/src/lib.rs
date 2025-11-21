@@ -37,6 +37,17 @@ impl EntityUid {
     }
 }
 
+impl From<String> for EntityUid {
+    fn from(value: String) -> Self {
+        let mut parts = value.split("::");
+        let list: Vec<&str> = parts.by_ref().collect();
+        let (last, elements) = list.split_last().unwrap();
+        let r#type = elements.join("::");
+        let id = last.to_string();
+        Self { r#type, id }
+    }
+}
+
 impl From<cedar_policy::EntityUid> for EntityUid {
     fn from(value: cedar_policy::EntityUid) -> Self {
         Self {

@@ -17,8 +17,10 @@ cedrus-cedar = { version = "0.1.0", path="../cedrus-cedar" }
 cedrus-core = { version = "0.1.0", path="../cedrus-core" }
 chrono = { workspace = true }
 clap = { workspace = true }
+headers = "0.4.1"
 jwt-authorizer = { workspace = true }
 openssl = { workspace = true }
+quick_cache = "0.6.18"
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio =  { workspace = true }

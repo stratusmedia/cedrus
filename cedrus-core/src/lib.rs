@@ -1,16 +1,107 @@
 #![doc = include_str!("../README.md")]
 
-use std::{collections::{HashMap, HashSet}, error::Error, fmt, hash::Hash};
+use std::{
+    collections::{HashMap, HashSet},
+    error::Error,
+    fmt,
+    hash::Hash,
+};
 
-use cedrus_cedar::{EntityUid, PolicyId};
+use cedrus_cedar::{Entity, EntityUid, PolicyId};
+use jwt_authorizer::{JwtAuthorizer, Validation};
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::{cache::CacheError, db::DatabaseError, pubsub::PubSubError};
+use crate::{
+    cache::CacheError,
+    core::{
+        IdentitySource,
+        is::{Configuration, OpenIdConnectTokenSelection},
+    },
+    db::DatabaseError,
+    pubsub::PubSubError,
+};
 
 pub const DEFAULT_LIMIT: usize = 1000;
 const TEMPLATE_PROJECT_ADMIN_ROLE: &'static str = "ProjectAdminRole";
+
+pub struct Authorizer {
+    pub identity_source: IdentitySource,
+    pub jwt: jwt_authorizer::Authorizer<Value>,
+}
+
+impl Authorizer {
+    pub fn new(identity_source: IdentitySource, jwt: jwt_authorizer::Authorizer<Value>) -> Self {
+        Self {
+            identity_source,
+            jwt,
+        }
+    }
+
+    pub fn get_entity(&self, token: Value) -> Option<Entity> {
+        let prefix = self.identity_source.prefix();
+        let entity_type = self.identity_source.principal_entity_type.clone();
+        let id_claim = self.identity_source.id_claim();
+        let sub = token.get(id_claim)?;
+        let id = format!("{}|{}", prefix, sub.as_str().unwrap());
+
+        let parents: HashSet<EntityUid> = {
+            if let Some(group_claim) = self.identity_source.group_claim() {
+                let group = token.get(group_claim)?;
+                let group = group.as_array().unwrap();
+                let group_entity_type = self.identity_source.group_entity_type().unwrap_or_default();
+                group
+                    .iter()
+                    .map(|v| EntityUid::new(group_entity_type.to_string(), format!("{}|{}", prefix, v.as_str().unwrap())))
+                    .collect::<HashSet<EntityUid>>()
+            } else {
+                HashSet::new()
+            }
+        };
+
+        let value = json!({
+            "uid": {
+                "type": entity_type,
+                "id": id
+            },
+            "attrs": token,
+            "parents": parents
+        });
+        println!("Value: {}", serde_json::to_string_pretty(&value).unwrap());
+
+        let entity: Entity = serde_json::from_value(value).unwrap();
+
+        println!("Entity {:?}", entity);
+
+        Some(entity)
+    }
+}
+
+pub async fn authorizer_factory(conf: &Configuration) -> jwt_authorizer::Authorizer<Value> {
+    match conf {
+        Configuration::CognitoUserPoolConfiguration(conf) => {
+            let url = conf.url_keys();
+            JwtAuthorizer::from_jwks_url(&url).build().await.unwrap()
+        }
+        Configuration::OpenIdConnectConfiguration(conf) => {
+            let validation = match &conf.token_selection {
+                OpenIdConnectTokenSelection::AccessTokenOnly(configuration) => {
+                    Validation::new().aud(&configuration.audiences)
+                }
+                OpenIdConnectTokenSelection::IdentityTokenOnly(configuration) => {
+                    Validation::new().aud(&configuration.client_ids)
+                }
+            };
+            JwtAuthorizer::from_oidc(&conf.issuer)
+                .validation(validation)
+                .build()
+                .await
+                .unwrap()
+        }
+    }
+}
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -276,8 +367,7 @@ pub enum CedrusError {
     ContextJsonError(cedar_policy::ContextJsonError),
 }
 
-impl Error for CedrusError {
-}
+impl Error for CedrusError {}
 
 impl fmt::Display for CedrusError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

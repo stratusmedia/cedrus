@@ -9,8 +9,7 @@ use cedrus_core::{
     pubsub::pubsub_factory,
 };
 use cedrus::{
-    QueryParams,
-    routes::{auth, projects},
+    AppState, QueryParams, routes::{auth, projects}
 };
 use clap::Parser;
 use tracing_subscriber::prelude::*;
@@ -121,7 +120,7 @@ struct Args {
 }
 
 fn subscribe_closure<'a>(
-    state: &'a Arc<Cedrus>,
+    state: &'a Cedrus,
 ) -> Box<dyn 'a + Send + Sync + Fn(Event) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>>> {
     let closure = move |msg: Event| -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
         Box::pin(async move {
@@ -147,17 +146,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = database_factory(&config.db).await;
     let cache = cache_factory(&config.cache).await;
     let pubsub = pubsub_factory(&config.pubsub).await;
+    let group_admin = config.group_admin.clone();
 
-    let state = Cedrus::new(db, cache, pubsub).await;
+    let cedrus = Cedrus::new(db, cache, pubsub, group_admin).await;
+    let state = AppState::new(cedrus);
     let shared_state = Arc::new(state);
-    let _ = Cedrus::init_project(&shared_state, &config).await.unwrap();
-    let _ = Cedrus::init_cache(&shared_state).await.unwrap();
-    let _ = Cedrus::load_cache(&shared_state).await.unwrap();
+    let _ = Cedrus::init_project(&shared_state.cedrus, &config).await.unwrap();
+    let _ = Cedrus::init_cache(&shared_state.cedrus).await.unwrap();
+    let _ = Cedrus::load_cache(&shared_state.cedrus).await.unwrap();
 
     let shared = shared_state.clone();
     tokio::spawn(async move {
-        let ops = [subscribe_closure(&shared)];
-        shared.pubsub.subscribe(&ops).await;
+        let ops = [subscribe_closure(&shared.cedrus)];
+        shared.cedrus.pubsub.subscribe(&ops).await;
     });
 
     let cors = CorsLayer::new()

@@ -11,10 +11,10 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use cedrus_core::{
-    core::{cedrus::Cedrus, project::Project, IdentitySource}, CedrusActions, PageHash, PageList, Selector
+    core::{project::Project, IdentitySource}, CedrusActions, PageHash, PageList, Selector
 };
 
-use crate::{AppError, AppJson, QueryParams};
+use crate::{AppError, AppJson, AppState, QueryParams};
 
 #[derive(Default, Clone, Serialize, Deserialize, ToSchema)]
 pub struct IsAuthorizedRequest {
@@ -51,18 +51,18 @@ pub struct CedarSyntax {
 )]
 async fn projects_get(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Query(query_params): Query<QueryParams>,
 ) -> Result<AppJson<PageList<Project>>, AppError> {
     tracing::info!("principal: {:?}", principal);
-    let page = if state.is_admin(&principal) {
-        state.projects_find(query_params.into()).await?
+    let page = if state.cedrus.is_admin(&principal) {
+        state.cedrus.projects_find(query_params.into()).await?
     } else {
         let mut query: cedrus_core::Query = query_params.into();
         let rol = HashMap::from([(principal.to_string(), Selector::Exists(true))]);
         let roles = HashMap::from([("roles".to_string(), Selector::Record(rol))]);
         query.selector = Some(Selector::Record(roles));
-        state.projects_find(query).await?
+        state.cedrus.projects_find(query).await?
     };
 
     Ok(AppJson(page))
@@ -82,12 +82,12 @@ async fn projects_get(
 )]
 async fn projects_post(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Json(mut project): Json<Project>,
 ) -> Result<AppJson<Project>, AppError> 
 {
     project.id = Uuid::now_v7();
-    let project = state.project_create(project, principal).await?;
+    let project = state.cedrus.project_create(project, principal).await?;
 
     Ok(AppJson(project))
 }
@@ -108,15 +108,15 @@ async fn projects_post(
 )]
 async fn projects_id_get(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<AppJson<Project>, AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::GetProject.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProject.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    let Some(project) = state.project_find(id).await? else {
+    let Some(project) = state.cedrus.project_find(id).await? else {
         return Err(AppError::NotFound);
     };
 
@@ -140,16 +140,16 @@ async fn projects_id_get(
 )]
 async fn projects_id_put(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(project): Json<Project>,
 ) -> Result<AppJson<Project>, AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::PutProject.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::PutProject.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    let project = state.project_update(id, project).await?;
+    let project = state.cedrus.project_update(id, project).await?;
 
     Ok(AppJson(project))
 }
@@ -170,18 +170,18 @@ async fn projects_id_put(
 )]
 async fn projects_id_delete(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<AppJson<Project>, AppError> 
 {
     if id.is_nil() {
         return Err(AppError::Forbidden);
     }
-    if !state.is_allow(principal, CedrusActions::DeleteProject.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::DeleteProject.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    let project = state.project_remove(id).await?;
+    let project = state.cedrus.project_remove(id).await?;
 
     Ok(AppJson(project))
 }
@@ -202,15 +202,15 @@ async fn projects_id_delete(
 )]
 async fn projects_id_identity_source_get(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<AppJson<Option<IdentitySource>>, AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::GetProjectIdentitySource.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProjectIdentitySource.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    let identity_source = state.project_identity_source_find(id).await?;
+    let identity_source = state.cedrus.project_identity_source_find(id).await?;
 
     Ok(AppJson(identity_source))
 }
@@ -232,16 +232,16 @@ async fn projects_id_identity_source_get(
 )]
 async fn projects_id_identity_source_put(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(identity_source): Json<IdentitySource>,
 ) -> Result<(), AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::PutProjectIdentitySource.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::PutProjectIdentitySource.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    state.project_identity_source_update(id, identity_source).await?;
+    state.cedrus.project_identity_source_update(id, identity_source).await?;
 
     Ok(())
 }
@@ -262,15 +262,15 @@ async fn projects_id_identity_source_put(
 )]
 async fn projects_id_identity_source_delete(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<(), AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::DeleteProjectIdentitySource.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::DeleteProjectIdentitySource.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    state.project_identity_source_remove(id).await?;
+    state.cedrus.project_identity_source_remove(id).await?;
 
     Ok(())
 }
@@ -291,15 +291,15 @@ async fn projects_id_identity_source_delete(
 )]
 async fn projects_id_schema_get(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<AppJson<Option<Schema>>, AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::GetProjectSchema.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProjectSchema.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    let schema = state.project_schema_find(id).await?;
+    let schema = state.cedrus.project_schema_find(id).await?;
 
     Ok(AppJson(schema))
 }
@@ -321,16 +321,16 @@ async fn projects_id_schema_get(
 )]
 async fn projects_id_schema_put(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(schema): Json<Schema>,
 ) -> Result<(), AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::PutProjectSchema.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::PutProjectSchema.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    state.project_schema_update(id, schema).await?;
+    state.cedrus.project_schema_update(id, schema).await?;
 
     Ok(())
 }
@@ -351,15 +351,15 @@ async fn projects_id_schema_put(
 )]
 async fn projects_id_schema_delete(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<(), AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::DeleteProjectSchema.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::DeleteProjectSchema.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    state.project_schema_remove(id).await?;
+    state.cedrus.project_schema_remove(id).await?;
 
     Ok(())
 }
@@ -380,15 +380,15 @@ async fn projects_id_schema_delete(
 )]
 async fn projects_id_schema_cedar_get(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<AppJson<CedarSyntax>, AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::GetProjectSchema.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProjectSchema.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    let schema = state.project_schema_find(id).await?;
+    let schema = state.cedrus.project_schema_find(id).await?;
     let schema = match schema {
         Some(schema) => {
             let value = serde_json::to_value(&schema).unwrap();
@@ -419,12 +419,12 @@ async fn projects_id_schema_cedar_get(
 )]
 async fn projects_id_schema_cedar_put(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(syntax): Json<CedarSyntax>,
 ) -> Result<(), AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::PutProjectSchema.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::PutProjectSchema.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
@@ -438,7 +438,7 @@ async fn projects_id_schema_cedar_put(
         None => return Ok(()),
     };
 
-    state.project_schema_update(id, schema).await?;
+    state.cedrus.project_schema_update(id, schema).await?;
 
     Ok(())
 }
@@ -460,16 +460,16 @@ async fn projects_id_schema_cedar_put(
 )]
 async fn projects_id_entities_get(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Query(query_params): Query<QueryParams>,
 ) -> Result<AppJson<PageList<Entity>>, AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::GetProjectEntities.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProjectEntities.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    let page = state.project_entities_find(id, query_params.into()).await?;
+    let page = state.cedrus.project_entities_find(id, query_params.into()).await?;
 
     Ok(AppJson(page))
 }
@@ -491,16 +491,16 @@ async fn projects_id_entities_get(
 )]
 async fn projects_id_entities_post(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(entities): Json<Vec<Entity>>,
 ) -> Result<(), AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::PostProjectEntities.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::PostProjectEntities.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    state.project_entities_add(id, entities).await?;
+    state.cedrus.project_entities_add(id, entities).await?;
 
     Ok(())
 }
@@ -522,16 +522,16 @@ async fn projects_id_entities_post(
 )]
 async fn projects_id_entities_delete(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(project_ids): Json<Vec<EntityUid>>,
 ) -> Result<(), AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::DeleteProjectEntities.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::DeleteProjectEntities.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    state.project_entities_remove(id, project_ids).await?;
+    state.cedrus.project_entities_remove(id, project_ids).await?;
 
     Ok(())
 }
@@ -555,16 +555,16 @@ async fn projects_id_entities_delete(
 )]
 async fn projects_id_policies_get(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Query(query_params): Query<QueryParams>,
 ) -> Result<AppJson<PageHash<PolicyId, Policy>>, AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::GetProjectPolicies.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProjectPolicies.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    let page = state.project_policies_find(id, query_params.into()).await?;    
+    let page = state.cedrus.project_policies_find(id, query_params.into()).await?;    
 
     Ok(AppJson(page))
 }
@@ -588,11 +588,11 @@ async fn projects_id_policies_get(
 )]
 async fn projects_id_policies_policy_id_cedar_get(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path((id, policy_id)): Path<(Uuid, String)>,
 ) -> Result<AppJson<CedarSyntax>, AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::GetProjectPolicies.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProjectPolicies.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
@@ -602,7 +602,7 @@ async fn projects_id_policies_policy_id_cedar_get(
         selector: Some(Selector::Record(map)),
         ..Default::default()
     };
-    let items = state.project_policies_find(id, query).await?.items;    
+    let items = state.cedrus.project_policies_find(id, query).await?.items;    
     if items.is_empty() {
         return Err(AppError::NotFound);
     }
@@ -637,12 +637,12 @@ async fn projects_id_policies_policy_id_cedar_get(
 )]
 async fn projects_id_policies_policy_id_cedar_put(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path((id, policy_id)): Path<(Uuid, String)>,
     Json(syntax): Json<CedarSyntax>,
 ) -> Result<(), AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::GetProjectPolicies.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProjectPolicies.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
@@ -651,7 +651,7 @@ async fn projects_id_policies_policy_id_cedar_put(
 
     let policy: Policy = cedar_policy.try_into().unwrap();
 
-    state.project_policies_add(id, HashMap::from([(policy_id.into(), policy)])).await?;
+    state.cedrus.project_policies_add(id, HashMap::from([(policy_id.into(), policy)])).await?;
 
     Ok(())
 }
@@ -675,16 +675,16 @@ async fn projects_id_policies_policy_id_cedar_put(
 )]
 async fn projects_id_policies_post(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(policies): Json<HashMap<PolicyId, Policy>>,
 ) -> Result<(), AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::PostProjectPolicies.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::PostProjectPolicies.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    state.project_policies_add(id, policies).await?;
+    state.cedrus.project_policies_add(id, policies).await?;
 
     Ok(())
 }
@@ -708,16 +708,16 @@ async fn projects_id_policies_post(
 )]
 async fn projects_id_policies_delete(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(policy_ids): Json<Vec<PolicyId>>,
 ) -> Result<(), AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::DeleteProjectPolicies.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::DeleteProjectPolicies.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    state.project_policies_remove(id, policy_ids).await?;
+    state.cedrus.project_policies_remove(id, policy_ids).await?;
 
     Ok(())
 }
@@ -741,16 +741,16 @@ async fn projects_id_policies_delete(
 )]
 async fn projects_id_templates_get(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Query(query_params): Query<QueryParams>,
 ) -> Result<AppJson<PageHash<PolicyId, Template>>, AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::GetProjectTemplates.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProjectTemplates.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    let page = state.project_templates_find(id, query_params.into()).await?;
+    let page = state.cedrus.project_templates_find(id, query_params.into()).await?;
 
     Ok(AppJson(page))
 }
@@ -774,16 +774,16 @@ async fn projects_id_templates_get(
 )]
 async fn projects_id_templates_post(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(templates): Json<HashMap<PolicyId, Template>>,
 ) -> Result<(), AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::PostProjectTemplates.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::PostProjectTemplates.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    state.project_templates_add(id, templates).await?;
+    state.cedrus.project_templates_add(id, templates).await?;
 
     Ok(())
 }
@@ -807,16 +807,16 @@ async fn projects_id_templates_post(
 )]
 async fn projects_id_templates_delete(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(template_ids): Json<Vec<PolicyId>>,
 ) -> Result<(), AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::DeleteProjectTemplates.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::DeleteProjectTemplates.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    state.project_templates_remove(id, template_ids).await?;
+    state.cedrus.project_templates_remove(id, template_ids).await?;
 
     Ok(())
 }
@@ -840,11 +840,11 @@ async fn projects_id_templates_delete(
 )]
 async fn projects_id_templates_template_id_cedar_get(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path((id, template_id)): Path<(Uuid, String)>,
 ) -> Result<AppJson<CedarSyntax>, AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::GetProjectPolicies.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProjectPolicies.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
@@ -854,7 +854,7 @@ async fn projects_id_templates_template_id_cedar_get(
         selector: Some(Selector::Record(map)),
         ..Default::default()
     };
-    let items = state.project_templates_find(id, query).await?.items;    
+    let items = state.cedrus.project_templates_find(id, query).await?.items;    
     if items.is_empty() {
         return Err(AppError::NotFound);
     }
@@ -887,12 +887,12 @@ async fn projects_id_templates_template_id_cedar_get(
 )]
 async fn projects_id_templates_template_id_cedar_put(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path((id, template_id)): Path<(Uuid, String)>,
     Json(syntax): Json<CedarSyntax>,
 ) -> Result<(), AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::GetProjectPolicies.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProjectPolicies.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
@@ -901,7 +901,7 @@ async fn projects_id_templates_template_id_cedar_put(
 
     let template: Template = cedar_template.try_into().unwrap();
 
-    state.project_templates_add(id, HashMap::from([(template_id.into(), template)])).await?;
+    state.cedrus.project_templates_add(id, HashMap::from([(template_id.into(), template)])).await?;
 
     Ok(())
 }
@@ -925,16 +925,16 @@ async fn projects_id_templates_template_id_cedar_put(
 )]
 async fn projects_id_template_links_get(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Query(query_params): Query<QueryParams>,
 ) -> Result<AppJson<PageList<TemplateLink>>, AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::GetProjectTemplateLinks.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProjectTemplateLinks.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    let page = state.project_template_links_find(id, query_params.into()).await?;
+    let page = state.cedrus.project_template_links_find(id, query_params.into()).await?;
 
     Ok(AppJson(page))
 }
@@ -958,16 +958,16 @@ async fn projects_id_template_links_get(
 )]
 async fn projects_id_template_links_post(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(template_links): Json<Vec<TemplateLink>>,
 ) -> Result<(), AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::PostProjectTemplateLinks.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::PostProjectTemplateLinks.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    state.project_template_links_add(id, template_links).await?;
+    state.cedrus.project_template_links_add(id, template_links).await?;
 
     Ok(())
 }
@@ -991,16 +991,16 @@ async fn projects_id_template_links_post(
 )]
 async fn projects_id_template_links_delete(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(template_link_ids): Json<Vec<PolicyId>>,
 ) -> Result<(), AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::DeleteProjectTemplateLinks.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::DeleteProjectTemplateLinks.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    state.project_template_links_remove(id, template_link_ids).await?;
+    state.cedrus.project_template_links_remove(id, template_link_ids).await?;
 
     Ok(())
 }
@@ -1024,11 +1024,11 @@ async fn projects_id_template_links_delete(
 )]
 async fn projects_id_template_links_policy_id_cedar_get(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path((id, template_id)): Path<(Uuid, String)>,
 ) -> Result<AppJson<CedarSyntax>, AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::GetProjectPolicies.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProjectPolicies.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
@@ -1038,7 +1038,7 @@ async fn projects_id_template_links_policy_id_cedar_get(
         selector: Some(Selector::Record(map)),
         ..Default::default()
     };
-    let items = state.project_templates_find(id, query).await?.items;    
+    let items = state.cedrus.project_templates_find(id, query).await?.items;    
     if items.is_empty() {
         return Err(AppError::NotFound);
     }
@@ -1071,12 +1071,12 @@ async fn projects_id_template_links_policy_id_cedar_get(
 )]
 async fn projects_id_template_links_policy_id_cedar_put(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path((id, template_id)): Path<(Uuid, String)>,
     Json(syntax): Json<CedarSyntax>,
 ) -> Result<(), AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::GetProjectPolicies.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProjectPolicies.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
@@ -1085,7 +1085,7 @@ async fn projects_id_template_links_policy_id_cedar_put(
 
     let template: Template = cedar_template.try_into().unwrap();
 
-    state.project_templates_add(id, HashMap::from([(template_id.into(), template)])).await?;
+    state.cedrus.project_templates_add(id, HashMap::from([(template_id.into(), template)])).await?;
 
     Ok(())
 }
@@ -1108,18 +1108,18 @@ async fn projects_id_template_links_policy_id_cedar_put(
 )]
 async fn projects_id_policy_set_get(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<AppJson<PolicySet>, AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::GetProjectTemplateLinks.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProjectTemplateLinks.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
     let query = cedrus_core::Query::new();
-    let static_policies = state.project_policies_find(id, query.clone()).await?.items;
-    let templates = state.project_templates_find(id, query.clone()).await?.items;
-    let template_links = state.project_template_links_find(id, query).await?.items;
+    let static_policies = state.cedrus.project_policies_find(id, query.clone()).await?.items;
+    let templates = state.cedrus.project_templates_find(id, query.clone()).await?.items;
+    let template_links = state.cedrus.project_template_links_find(id, query).await?.items;
 
     let policy_set = PolicySet {
         static_policies,
@@ -1148,18 +1148,18 @@ async fn projects_id_policy_set_get(
 )]
 async fn projects_id_policy_set_cedar_get(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<AppJson<CedarSyntax>, AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::GetProjectTemplateLinks.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProjectTemplateLinks.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
     let query = cedrus_core::Query::new();
-    let static_policies = state.project_policies_find(id, query.clone()).await?.items;
-    let templates = state.project_templates_find(id, query.clone()).await?.items;
-    // let template_links = state.project_template_links_find(id, query).await?.items;
+    let static_policies = state.cedrus.project_policies_find(id, query.clone()).await?.items;
+    let templates = state.cedrus.project_templates_find(id, query.clone()).await?.items;
+    // let template_links = state.cedrus.project_template_links_find(id, query).await?.items;
 
     let policy_set = PolicySet {
         static_policies,
@@ -1192,16 +1192,16 @@ async fn projects_id_policy_set_cedar_get(
 )]
 async fn projects_id_is_authorized_post(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(request): Json<IsAuthorizedRequest>,
 ) -> Result<AppJson<Response>, AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::PostProjectIsAuthorized.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::PostProjectIsAuthorized.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    let answer = state.is_authorized(&id, request.principal, request.action, request.resource, request.context)?;
+    let answer = state.cedrus.is_authorized(&id, request.principal, request.action, request.resource, request.context)?;
 
     Ok(AppJson(answer))
 }
@@ -1225,21 +1225,21 @@ async fn projects_id_is_authorized_post(
 )]
 async fn projects_id_is_authorized_batch_post(
     Extension(principal): Extension<EntityUid>,
-    State(state): State<Arc<Cedrus>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(request): Json<IsAuthorizedRequests>,
 ) -> Result<AppJson<Vec<Response>>, AppError> 
 {
-    if !state.is_allow(principal, CedrusActions::PostProjectIsAuthorized.value(), Project::entity_uid(id)) {
+    if !state.cedrus.is_allow(principal, CedrusActions::PostProjectIsAuthorized.value(), Project::entity_uid(id)) {
         return Err(AppError::Forbidden);
     }
 
-    let answers = state.is_authorized_batch(&id, request.requests)?;
+    let answers = state.cedrus.is_authorized_batch(&id, request.requests)?;
 
     Ok(AppJson(answers))
 }
 
-pub fn routes() -> Router<Arc<Cedrus>> 
+pub fn routes() -> Router<Arc<AppState>> 
 {
     Router::new()
         .route("/", get(projects_get))

@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::collections::{HashMap, HashSet};
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use dashmap::DashMap;
@@ -15,11 +12,11 @@ use cedrus_cedar::{
 };
 
 use crate::{
-    CedrusError, Event, EventType, PageHash, PageList, Query, TEMPLATE_PROJECT_ADMIN_ROLE,
-    cache::Cache, db::Database, pubsub::PubSub,
+    Authorizer, CedrusError, Event, EventType, PageHash, PageList, Query,
+    TEMPLATE_PROJECT_ADMIN_ROLE, cache::Cache, db::Database, pubsub::PubSub,
 };
 
-use super::{Authorizer, CedrusConfig, IdentitySource, is::Configuration, project::Project};
+use super::{CedrusConfig, IdentitySource, is::Configuration, project::Project};
 
 pub async fn authorizer_factory(conf: &Configuration) -> jwt_authorizer::Authorizer<Value> {
     match conf {
@@ -48,7 +45,7 @@ pub async fn authorizer_factory(conf: &Configuration) -> jwt_authorizer::Authori
 pub struct Cedrus {
     pub id: Uuid, // Container Identity, used for cluster comunictaion
 
-    admin: EntityUid, // Entity Admins Group
+    group_admin: EntityUid, // Entity Admins Group
 
     pub db: Box<dyn Database + Send + Sync>,
     pub cache: Box<dyn Cache + Send + Sync>,
@@ -67,10 +64,11 @@ impl Cedrus {
         db: Box<dyn Database + Send + Sync>,
         cache: Box<dyn Cache + Send + Sync>,
         pubsub: Box<dyn PubSub + Send + Sync>,
+        group_admin: EntityUid,
     ) -> Self {
         Self {
             id: Uuid::now_v7(),
-            admin: EntityUid::new("Cedrus::Group".to_string(), "Admins".to_string()),
+            group_admin,
 
             db,
             cache,
@@ -85,10 +83,7 @@ impl Cedrus {
         }
     }
 
-    pub async fn init_project(
-        state: &Arc<Cedrus>,
-        config: &CedrusConfig,
-    ) -> Result<(), CedrusError> {
+    pub async fn init_project(state: &Cedrus, config: &CedrusConfig) -> Result<(), CedrusError> {
         // Find project with id nil
         let project = state.db.project_load(&Uuid::nil()).await?;
         if project.is_none() {
@@ -147,7 +142,7 @@ impl Cedrus {
         Ok(())
     }
 
-    pub async fn init_cache(state: &Arc<Cedrus>) -> Result<(), CedrusError> {
+    pub async fn init_cache(state: &Cedrus) -> Result<(), CedrusError> {
         let query = Query::new();
         let projects = state.db.projects_load(&query).await?;
 
@@ -245,7 +240,7 @@ impl Cedrus {
         Ok(())
     }
 
-    pub async fn load_cache(state: &Arc<Cedrus>) -> Result<(), CedrusError> {
+    pub async fn load_cache(state: &Cedrus) -> Result<(), CedrusError> {
         state.reload_all().await?;
         Ok(())
     }
@@ -431,7 +426,7 @@ impl Cedrus {
         };
         let (entity, _cedar_entity) = value.value();
 
-        if entity.parents().contains(&self.admin) {
+        if entity.parents().contains(&self.group_admin) {
             println!("is_admin: true");
             return true;
         }

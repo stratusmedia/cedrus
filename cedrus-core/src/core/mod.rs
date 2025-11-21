@@ -1,6 +1,8 @@
+use cedrus_cedar::EntityUid;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use utoipa::ToSchema;
+
+use crate::core::is::OpenIdConnectTokenSelection;
 
 pub mod cedrus;
 pub mod project;
@@ -21,7 +23,7 @@ pub mod is {
     pub struct CognitoUserPoolConfiguration {
         pub user_pool_arn: String,
         pub client_ids: Vec<String>,
-        pub group_configuration: CognitoGroupConfiguration,
+        pub group_configuration: Option<CognitoGroupConfiguration>,
     }
 
     impl CognitoUserPoolConfiguration {
@@ -125,6 +127,76 @@ pub mod is {
 pub struct IdentitySource {
     pub principal_entity_type: String,
     pub configuration: is::Configuration,
+}
+
+impl IdentitySource {
+    pub fn prefix(&self) -> String {
+        match &self.configuration {
+            is::Configuration::CognitoUserPoolConfiguration(config) => config
+                .user_pool_arn
+                .split('/')
+                .last()
+                .expect("Invalid user pool ARN")
+                .to_string(),
+            is::Configuration::OpenIdConnectConfiguration(config) => {
+                match config.entity_id_prefix {
+                    Some(ref val) => val.clone(),
+                    None => config.issuer.replace("http://", "").replace("https://", ""),
+                }
+            }
+        }
+    }
+
+    pub fn id_claim(&self) -> String {
+        match &self.configuration {
+            is::Configuration::CognitoUserPoolConfiguration(_) => "sub".to_string(),
+            is::Configuration::OpenIdConnectConfiguration(conf) => match &conf.token_selection {
+                OpenIdConnectTokenSelection::AccessTokenOnly(token) => {
+                    match &token.principal_id_claim {
+                        Some(val) => val.clone(),
+                        None => "sub".to_string(),
+                    }
+                }
+                OpenIdConnectTokenSelection::IdentityTokenOnly(token) => {
+                    match &token.principal_id_claim {
+                        Some(val) => val.clone(),
+                        None => "sub".to_string(),
+                    }
+                }
+            },
+        }
+    }
+
+    pub fn group_claim(&self) -> Option<String> {
+        match &self.configuration {
+            is::Configuration::CognitoUserPoolConfiguration(_) => {
+                Some("[cognito:groups]".to_string())
+            }
+            is::Configuration::OpenIdConnectConfiguration(conf) => {
+                match &conf.group_configuration {
+                    Some(group) => Some(group.group_claim.clone()),
+                    None => None,
+                }
+            }
+        }
+    }
+
+    pub fn group_entity_type(&self) -> Option<String> {
+        match &self.configuration {
+            is::Configuration::CognitoUserPoolConfiguration(conf) => {
+                match &conf.group_configuration {
+                    Some(group) => Some(group.group_entity_type.clone()),
+                    None => None,
+                }
+            }
+            is::Configuration::OpenIdConnectConfiguration(conf) => {
+                match &conf.group_configuration {
+                    Some(group) => Some(group.group_entity_type.clone()),
+                    None => None,
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]
@@ -232,50 +304,7 @@ pub struct CedrusConfig {
     #[serde(default)]
     pub pubsub: PubSubConfig,
     pub identity_source: IdentitySource,
-}
-
-pub struct Authorizer {
-    pub identity_source: IdentitySource,
-    pub jwt: jwt_authorizer::Authorizer<Value>,
-    pub prefix: String,
-    pub id_claim: String,
-}
-
-impl Authorizer {
-    pub fn new(identity_source: IdentitySource, jwt: jwt_authorizer::Authorizer<Value>) -> Self {
-        let prefix = match &identity_source.configuration {
-            is::Configuration::CognitoUserPoolConfiguration(conf) => conf.prefix(),
-            is::Configuration::OpenIdConnectConfiguration(conf) => match &conf.entity_id_prefix {
-                Some(val) => val.clone(),
-                None => "OpenIdConnect".to_string(),
-            },
-        };
-
-        let id_claim = match &identity_source.configuration {
-            is::Configuration::CognitoUserPoolConfiguration(_) => "sub".to_string(),
-            is::Configuration::OpenIdConnectConfiguration(conf) => match &conf.token_selection {
-                is::OpenIdConnectTokenSelection::AccessTokenOnly(token) => {
-                    match &token.principal_id_claim {
-                        Some(val) => val.clone(),
-                        None => "sub".to_string(),
-                    }
-                }
-                is::OpenIdConnectTokenSelection::IdentityTokenOnly(token) => {
-                    match &token.principal_id_claim {
-                        Some(val) => val.clone(),
-                        None => "sub".to_string(),
-                    }
-                }
-            },
-        };
-
-        Self {
-            identity_source,
-            jwt,
-            prefix,
-            id_claim,
-        }
-    }
+    pub group_admin: EntityUid,
 }
 
 #[cfg(test)]
@@ -303,8 +332,8 @@ mod tests {
         };
 
         let configuration = Configuration::CognitoUserPoolConfiguration(CognitoUserPoolConfiguration {
-            user_pool_arn: "arn:aws:dynamodb:eu-west-1:414827610504:table/Dev-CedrusAwsStack-CedrusTable5F145212-FIBPKSAN5W0".to_string(),
-            client_ids: vec!["3e1ots47s5fq86k4a6vup0rove".to_string()],
+            user_pool_arn: "arn:aws:dynamodb:eu-west-1:1234567890:table/CEDRUS".to_string(),
+            client_ids: vec!["XXXXXXXXXXX".to_string()],
             group_configuration: CognitoGroupConfiguration {
                 group_entity_type: "Cedrus::Group".to_string(),
             },
@@ -330,6 +359,7 @@ mod tests {
             cache: CacheConfig::ValKeyConfig(cache),
             pubsub: PubSubConfig::ValKeyConfig(pubsub),
             identity_source: identity_source,
+            group_admin: EntityUid::new("Cedrus::Group", "dasdad|CedrusAdmin").unwrap(),
         };
 
         let json = serde_json::to_string(&config).unwrap();
