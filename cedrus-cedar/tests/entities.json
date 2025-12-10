@@ -1,0 +1,22 @@
+[
+  {
+    "uid": {"type": "MyApp::User", "id": "alice"},
+    "attrs": {},
+    "parents": [],
+    "tags": {
+      "name": "Alice"
+    }
+  },
+  {
+    "uid": {"type": "MyApp::User", "id": "bob"},
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {"type": "MyApp::Document", "id": "doc1"},
+    "attrs": {
+      "owner": {"__entity": {"type": "MyApp::User", "id": "alice"}}
+    },
+    "parents": []
+  }
+]

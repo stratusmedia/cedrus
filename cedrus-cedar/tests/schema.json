@@ -1,0 +1,58 @@
+{
+  "MyApp": {
+    "entityTypes": {
+      "User": {
+        "memberOfTypes": [
+          "Group"
+        ],
+        "tags": {
+          "type": "String"
+        }
+      },
+      "Group": {},
+      "Document": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "owner": {
+              "type": "Entity",
+              "name": "User"
+            },
+            "context": {
+              "type": "EntityOrCommon",
+              "name": "MyContext",
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "actions": {
+      "viewDocument": {
+        "appliesTo": {
+          "principalTypes": [
+            "User"
+          ],
+          "resourceTypes": [
+            "Document"
+          ],
+          "context": {
+            "type": "EntityOrCommon",
+            "name": "MyContext"
+          }
+        }
+      }
+    },
+    "commonTypes": {
+      "MyContext": {
+        "type": "Record",
+        "attributes": {
+          "user": {
+            "type": "Entity",
+            "name": "User"
+          }
+        }
+      }
+    }
+  }
+}

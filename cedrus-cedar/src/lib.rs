@@ -2642,4 +2642,82 @@ permit (
         let template: Template = serde_json::from_str(&json).unwrap();
         println!("{}", serde_json::to_string_pretty(&template).unwrap());
     }
+
+    #[test]
+    fn test_load_json_files() {
+        let schema_json = std::fs::read_to_string("tests/schema.json").unwrap();
+        let entities_json = std::fs::read_to_string("tests/entities.json").unwrap();
+        //let _policies_json = std::fs::read_to_string("tests/policies.json").unwrap();
+
+        let schema: Schema = serde_json::from_str(&schema_json).unwrap();
+        println!("{:?}", schema);
+        let entities: Vec<Entity> = serde_json::from_str(&entities_json).unwrap();
+        println!("{:?}", entities);
+        let schema = cedar_policy::Schema::from_json_str(&schema_json).unwrap();
+        let entities = cedar_policy::Entities::from_json_str(&entities_json, Some(&schema)).unwrap();
+        println!("{:?}", entities);
+
+        //let _policies: PolicySet = serde_json::from_str(&policies_json).unwrap();
+
+        //let schema = cedar_policy::Schema::from_json_str(&schema_json).unwrap();
+        //let fragment = SchemaFragment::from_json_str(&schema_json).unwrap();
+        //println!("{}", fragment.to_cedarschema().unwrap());
+    }
+
+    #[test]
+    fn test_entity_tags() {
+        let schema_json = r#"
+{
+    "MyApp": {
+        "entityTypes": {
+            "User": {
+                "shape": {
+                    "type": "Record",
+                    "attributes": {
+                        "id": {
+                            "type": "String"
+                        },
+                        "name": {
+                            "type": "String"
+                        }
+                    }
+                },
+                "memberOfTypes": [],
+                "tags": {
+                    "type": "String"
+                }
+            }
+        },
+        "actions": {}
+    }
+}
+"#;
+        let schema = cedar_policy::Schema::from_json_str(&schema_json).unwrap();
+        
+        let entity_json = r#"
+  {
+    "uid": {"type": "MyApp::User", "id": "alice"},
+    "attrs": {
+        "id": "alice",
+        "name": "Alice"
+    },
+    "parents": [],
+    "tags": {
+      "role": "Admin"
+    }
+  }
+"#;
+        let entity = cedar_policy::Entity::from_json_str(&entity_json, Some(&schema)).unwrap();
+        println!("{:?}", entity);
+
+        //let schema: Schema = serde_json::from_str(&schema_json).unwrap();
+        //println!("{:?}", schema);
+
+        let entity: Entity = serde_json::from_str(&entity_json).unwrap();
+        println!("{:?}", entity);
+
+        let entity = entity.to_cedar_entity(Some(&schema)).unwrap();
+        println!("{:?}", entity);
+
+    }
 }

@@ -334,9 +334,9 @@ mod tests {
         let configuration = Configuration::CognitoUserPoolConfiguration(CognitoUserPoolConfiguration {
             user_pool_arn: "arn:aws:dynamodb:eu-west-1:1234567890:table/CEDRUS".to_string(),
             client_ids: vec!["XXXXXXXXXXX".to_string()],
-            group_configuration: CognitoGroupConfiguration {
+            group_configuration: Some(CognitoGroupConfiguration {
                 group_entity_type: "Cedrus::Group".to_string(),
-            },
+            }),
         });
 
         let identity_source = IdentitySource {
@@ -347,9 +347,9 @@ mod tests {
         let server = ServerConfig {
             host: "localhost".to_string(),
             port: 3000,
-            public_key: "public_key".to_string(),
-            private_key: "private_key".to_string(),
-            chains_key: "chains_key".to_string(),
+            public_key: Some("public_key".to_string()),
+            private_key: Some("private_key".to_string()),
+            chains_key: Some("chains_key".to_string()),
             api_key: "api_key".to_string(),
         };
 
@@ -359,7 +359,7 @@ mod tests {
             cache: CacheConfig::ValKeyConfig(cache),
             pubsub: PubSubConfig::ValKeyConfig(pubsub),
             identity_source: identity_source,
-            group_admin: EntityUid::new("Cedrus::Group", "dasdad|CedrusAdmin").unwrap(),
+            group_admin: EntityUid::new("Cedrus::Group".to_string(), "dasdad|CedrusAdmin".to_string()),
         };
 
         let json = serde_json::to_string(&config).unwrap();

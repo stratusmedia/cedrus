@@ -1,0 +1,35 @@
+{
+  "staticPolicies": {
+    "owner-can-view": {
+      "effect": "permit",
+      "principal": {
+        "op": "All"
+      },
+      "action": {
+        "op": "==",
+        "entity": {"type": "MyApp::Action", "id": "viewDocument"}
+      },
+      "resource": {
+        "op": "All"
+      },
+      "conditions": [
+        {
+          "kind": "when",
+          "body": {
+            "==": {
+              "left": {
+                ".": {
+                  "left": {"Var": "resource"},
+                  "attr": "owner"
+                }
+              },
+              "right": {"Var": "principal"}
+            }
+          }
+        }
+      ]
+    }
+  },
+  "templates": {},
+  "templateLinks": []
+}
