@@ -1,9 +1,9 @@
 use redis::{
-    aio::MultiplexedConnection, cluster::ClusterClientBuilder, cluster_async::ClusterConnection,
-    AsyncCommands,
+    AsyncCommands, aio::MultiplexedConnection, cluster::ClusterClientBuilder,
+    cluster_async::ClusterConnection,
 };
 
-use crate::{core::ValKeyPubSubConfig, Event};
+use crate::{Event, core::ValKeyPubSubConfig};
 
 use super::{Op, PubSub, PubSubError};
 
@@ -27,7 +27,7 @@ impl ValKeyPubSub {
         } else {
             let url = conf.urls.get(0).unwrap();
             let client = redis::Client::open(url.clone()).unwrap();
-            let conn = client.get_multiplexed_tokio_connection().await.unwrap();
+            let conn = client.get_multiplexed_async_connection().await.unwrap();
             ConnectionType::Multiplexed(conn)
         };
 

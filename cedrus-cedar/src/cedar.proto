@@ -98,7 +98,8 @@ message Schema {
     repeated string memberOfTypes = 1;
     TypeJson shape = 2;
     TypeJson tags = 3;
-    map<string, string> annotations = 4;
+    repeated string enums = 4;
+    map<string, string> annotations = 5;
   }
 
   message AppliesTo {
@@ -263,9 +264,16 @@ message JsonExpr {
     EntityUid in = 3;
   }
 
+  message PatternElem {
+    oneof value {
+      string literal = 1;
+      bool wildcard = 2;
+    }
+  }
+
   message LikeExpr {
     JsonExpr left = 1;
-    string pattern = 2;
+    repeated PatternElem pattern = 2;
   }
 
   message IfThenElseExpr {

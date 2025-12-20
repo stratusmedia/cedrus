@@ -570,6 +570,77 @@ async fn projects_id_policies_get(
 }
 
 #[utoipa::path(
+    post,
+    path = "/v1/projects/{id}/policies/validate/cedar",
+    params(
+        ("id" = Uuid, Path, description = "Project Id"),
+    ),
+    request_body = CedarSyntax,
+    responses(
+        (status = 200, description = "Get Policy Cedar", body = CedarSyntax),
+        (status = 400, description = "Bad request"),
+        (status = 404, description = "Store not found")
+    ),
+    security(
+        ("bearerAuth" = []),
+        ("apiKey" = []),
+    )
+)]
+async fn projects_id_policies_validate_cedar_post(
+    Extension(principal): Extension<EntityUid>,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+    Json(syntax): Json<CedarSyntax>,
+) -> Result<AppJson<Policy>, AppError> 
+{
+    if !state.cedrus.is_allow(principal, CedrusActions::PostProjectPolicies.value(), Project::entity_uid(id)) {
+        return Err(AppError::Forbidden);
+    }
+
+    let Some(cedar) = syntax.cedar else {
+        return Err(AppError::BadRequest);
+    };
+
+    let policy = cedar_policy::Policy::parse(None, cedar)?;
+    Ok(AppJson(policy.try_into()?))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/projects/{id}/policies/validate/json",
+    params(
+        ("id" = Uuid, Path, description = "Project Id"),
+    ),
+    request_body = Policy,
+    responses(
+        (status = 200, description = "validate json policy", body = CedarSyntax),
+        (status = 400, description = "Bad request"),
+        (status = 404, description = "Store not found")
+    ),
+    security(
+        ("bearerAuth" = []),
+        ("apiKey" = []),
+    )
+)]
+async fn projects_id_policies_validate_json_post(
+    Extension(principal): Extension<EntityUid>,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+    Json(policy): Json<Policy>,
+) -> Result<AppJson<CedarSyntax>, AppError> 
+{
+    if !state.cedrus.is_allow(principal, CedrusActions::PostProjectPolicies.value(), Project::entity_uid(id)) {
+        return Err(AppError::Forbidden);
+    }
+
+    let policy_id = PolicyId::from("policy0".to_string());
+    let cedar_policy = policy.to_cedar(policy_id)?;
+    let cedar = cedar_policy.to_cedar();
+
+    Ok(AppJson(CedarSyntax { cedar }))
+}
+
+#[utoipa::path(
     get,
     path = "/v1/projects/{id}/policies/{policyId}/cedar",
     params(
@@ -1007,7 +1078,7 @@ async fn projects_id_template_links_delete(
 
 #[utoipa::path(
     get,
-    path = "/v1/projects/{id}/template-links/{policyId}/cedar",
+    path = "/v1/projects/{id}/template-links/{templateId}/cedar",
     params(
         ("id" = Uuid, Path, description = "Project Id"),
         ("templateId" = String, Path, description = "Template Id"),
@@ -1053,7 +1124,7 @@ async fn projects_id_template_links_policy_id_cedar_get(
 
 #[utoipa::path(
     put,
-    path = "/v1/projects/{id}/template-links/{policyId}/cedar",
+    path = "/v1/projects/{id}/template-links/{templateId}/cedar",
     params(
         ("id" = Uuid, Path, description = "Project Id"),
         ("templateId" = String, Path, description = "Template Id"),
@@ -1272,6 +1343,14 @@ pub fn routes() -> Router<Arc<AppState>>
         .route(
             "/{id}/policies",
             delete(projects_id_policies_delete),
+        )
+        .route(
+            "/{id}/policies/validate/cedar",
+            post(projects_id_policies_validate_cedar_post),
+        )
+        .route(
+            "/{id}/policies/validate/json",
+            post(projects_id_policies_validate_json_post),
         )
         .route(
             "/{id}/policies/{policyId}/cedar",

@@ -67,9 +67,9 @@ impl ConnectionType {
             ConnectionType::Multiplexed(conn) => {
                 let mut keys = Vec::new();
                 let mut conn = conn.clone();
-                let mut iter = conn.scan_match::<_, Option<String>>(pattern).await.unwrap();
+                let mut iter = conn.scan_match::<_, Option<String>>(pattern).await?;
                 while let Some(element) = iter.next_item().await {
-                    if let Some(key) = element {
+                    if let Some(key) = element? {
                         keys.push(key);
                     }
                 }
@@ -78,9 +78,9 @@ impl ConnectionType {
             ConnectionType::Cluster(conn) => {
                 let mut keys = Vec::new();
                 let mut conn = conn.clone();
-                let mut iter = conn.scan_match::<_, Option<String>>(pattern).await.unwrap();
+                let mut iter = conn.scan_match::<_, Option<String>>(pattern).await?;
                 while let Some(element) = iter.next_item().await {
-                    if let Some(key) = element {
+                    if let Some(key) = element? {
                         keys.push(key);
                     }
                 }
@@ -129,7 +129,7 @@ impl ValKeyCache {
         } else {
             let url = conf.urls.get(0).unwrap();
             let client = redis::Client::open(url.clone()).unwrap();
-            let conn = client.get_multiplexed_tokio_connection().await.unwrap();
+            let conn = client.get_multiplexed_async_connection().await.unwrap();
             ConnectionType::Multiplexed(conn)
         };
 

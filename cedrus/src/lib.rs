@@ -31,16 +31,16 @@ where
 
 pub struct AppState {
     pub cedrus: Cedrus,
-    pub tokens: Cache<String, EntityUid>
+    pub tokens: Cache<String, EntityUid>,
 }
 
 impl AppState {
     pub fn new(cedrus: Cedrus) -> Self {
         Self {
             cedrus,
-            tokens: Cache::new(1000)
+            tokens: Cache::new(1000),
         }
-    }    
+    }
 }
 
 // The kinds of errors we can hit in our application.
@@ -56,6 +56,7 @@ pub enum AppError {
 
     SchemaError(cedar_policy::SchemaError),
     EntitiesError(cedar_policy::entities_errors::EntitiesError),
+    PolicyParseError(cedar_policy::ParseErrors),
     PolicyFromJsonError(cedar_policy::PolicyFromJsonError),
     PolicyToJsonError(cedar_policy::PolicyToJsonError),
     PolicySetError(cedar_policy::PolicySetError),
@@ -149,6 +150,17 @@ impl IntoResponse for AppError {
                     ..Default::default()
                 },
             ),
+            AppError::PolicyParseError(e) => {
+                let detail = e.iter().map(|e| e.to_string()).collect::<Vec<String>>();
+                (
+                    StatusCode::BAD_REQUEST,
+                    ErrorResponse {
+                        message: "PolicyParse Error".to_owned(),
+                        detail: detail.join("\n"),
+                        ..Default::default()
+                    },
+                )
+            }
             AppError::PolicyFromJsonError(e) => (
                 StatusCode::BAD_REQUEST,
                 ErrorResponse {
@@ -157,14 +169,18 @@ impl IntoResponse for AppError {
                     ..Default::default()
                 },
             ),
-            AppError::PolicyToJsonError(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                ErrorResponse {
-                    message: "PolicyToJson Error".to_owned(),
-                    detail: format!("{:?}", e.source().unwrap()),
-                    ..Default::default()
-                },
-            ),
+            AppError::PolicyToJsonError(e) => {
+                let detail = e.to_string();
+                println!("PolicyToJson Error: {}", detail);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ErrorResponse {
+                        message: "PolicyToJson Error".to_owned(),
+                        detail,
+                        ..Default::default()
+                    },
+                )
+            }
             AppError::PolicySetError(e) => (
                 StatusCode::BAD_REQUEST,
                 ErrorResponse {
@@ -208,6 +224,12 @@ impl From<cedar_policy::SchemaError> for AppError {
 impl From<cedar_policy::entities_errors::EntitiesError> for AppError {
     fn from(error: cedar_policy::entities_errors::EntitiesError) -> Self {
         Self::EntitiesError(error)
+    }
+}
+
+impl From<cedar_policy::ParseErrors> for AppError {
+    fn from(error: cedar_policy::ParseErrors) -> Self {
+        Self::PolicyParseError(error)
     }
 }
 

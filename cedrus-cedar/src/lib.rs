@@ -651,6 +651,9 @@ pub mod schema {
         shape: Option<TypeJson>,
         #[serde(skip_serializing_if = "Option::is_none")]
         tags: Option<TypeJson>,
+        #[serde(rename = "enum")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        r#enum: Option<Vec<String>>,
         #[serde(skip_serializing_if = "HashMap::is_empty")]
         annotations: HashMap<String, String>,
     }
@@ -664,6 +667,10 @@ pub mod schema {
                 },
                 shape: value.shape.map(TypeJson::from),
                 tags: value.tags.map(TypeJson::from),
+                r#enum: match value.enums.is_empty() {
+                    true => None,
+                    false => Some(value.enums),
+                },
                 annotations: value.annotations,
             }
         }
@@ -675,6 +682,7 @@ pub mod schema {
                 member_of_types: self.member_of_types.unwrap_or_default(),
                 shape: self.shape.map(|s| s.into()),
                 tags: self.tags.map(|s| s.into()),
+                enums: self.r#enum.unwrap_or_default(),
                 annotations: self.annotations,
             }
         }
@@ -1556,27 +1564,51 @@ impl Into<proto::json_expr::IsExpr> for IsExpr {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+pub enum PatternElem {
+    Literal(String),
+    Wildcard,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct LikeExpr {
     #[schema(no_recursion)]
     left: JsonExpr,
-    pattern: String,
+    pattern: Vec<PatternElem>,
 }
 
 impl From<proto::json_expr::LikeExpr> for LikeExpr {
     fn from(value: proto::json_expr::LikeExpr) -> Self {
         Self {
             left: JsonExpr::from(*value.left.unwrap()),
-            pattern: value.pattern,
+            pattern: value
+                .pattern
+                .into_iter()
+                .map(|e| match e.value.unwrap() {
+                    proto::json_expr::pattern_elem::Value::Literal(s) => PatternElem::Literal(s),
+                    proto::json_expr::pattern_elem::Value::Wildcard(_) => PatternElem::Wildcard,
+                })
+                .collect(),
         }
     }
 }
 
 impl Into<proto::json_expr::LikeExpr> for LikeExpr {
     fn into(self) -> proto::json_expr::LikeExpr {
+        let pattern = self
+            .pattern
+            .into_iter()
+            .map(|e| proto::json_expr::PatternElem {
+                value: Some(match e {
+                    PatternElem::Literal(s) => proto::json_expr::pattern_elem::Value::Literal(s),
+                    PatternElem::Wildcard => proto::json_expr::pattern_elem::Value::Wildcard(true),
+                }),
+            })
+            .collect();
+
         proto::json_expr::LikeExpr {
             left: Some(::prost::alloc::boxed::Box::new(self.left.into())),
-            pattern: self.pattern,
+            pattern,
         }
     }
 }
@@ -2067,7 +2099,7 @@ impl TryFrom<cedar_policy::Policy> for Policy {
 
     fn try_from(value: cedar_policy::Policy) -> Result<Self, Self::Error> {
         match value.to_json() {
-            Ok(json) => Ok(serde_json::from_value(json).unwrap()),
+            Ok(json) => Ok(serde_json::from_value(json)?),
             Err(e) => Err(e),
         }
     }
@@ -2654,7 +2686,8 @@ permit (
         let entities: Vec<Entity> = serde_json::from_str(&entities_json).unwrap();
         println!("{:?}", entities);
         let schema = cedar_policy::Schema::from_json_str(&schema_json).unwrap();
-        let entities = cedar_policy::Entities::from_json_str(&entities_json, Some(&schema)).unwrap();
+        let entities =
+            cedar_policy::Entities::from_json_str(&entities_json, Some(&schema)).unwrap();
         println!("{:?}", entities);
 
         //let _policies: PolicySet = serde_json::from_str(&policies_json).unwrap();
@@ -2693,7 +2726,7 @@ permit (
 }
 "#;
         let schema = cedar_policy::Schema::from_json_str(&schema_json).unwrap();
-        
+
         let entity_json = r#"
   {
     "uid": {"type": "MyApp::User", "id": "alice"},
@@ -2718,6 +2751,5 @@ permit (
 
         let entity = entity.to_cedar_entity(Some(&schema)).unwrap();
         println!("{:?}", entity);
-
     }
 }
