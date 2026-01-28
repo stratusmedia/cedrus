@@ -1,6 +1,10 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use axum::{Router, middleware, routing::get};
+use cedrus::{
+    AppState, QueryParams,
+    routes::{auth, projects},
+};
 use cedrus_core::{
     Event, Selector,
     cache::cache_factory,
@@ -8,16 +12,13 @@ use cedrus_core::{
     db::database_factory,
     pubsub::pubsub_factory,
 };
-use cedrus::{
-    AppState, QueryParams, routes::{auth, projects}
-};
 use clap::Parser;
-use tracing_subscriber::prelude::*;
 use tower_http::{
     compression::CompressionLayer,
     cors::{Any, CorsLayer},
     trace::TraceLayer,
 };
+use tracing_subscriber::prelude::*;
 use utoipa::{
     Modify, OpenApi,
     openapi::security::{ApiKey, ApiKeyValue, Http, HttpAuthScheme, SecurityScheme},
@@ -85,12 +86,17 @@ impl Modify for SecurityAddon {
         projects::projects_id_schema_put,
         projects::projects_id_schema_delete,
         projects::projects_id_schema_cedar_get,
+        projects::projects_id_schema_cedar_put,
+        projects::projects_id_schema_validate_cedar_post,
+        projects::projects_id_schema_validate_json_post,
         projects::projects_id_entities_get,
         projects::projects_id_entities_post,
         projects::projects_id_entities_delete,
         projects::projects_id_policies_get,
         projects::projects_id_policies_post,
         projects::projects_id_policies_delete,
+        projects::projects_id_policies_validate_cedar_post,
+        projects::projects_id_policies_validate_json_post,
         projects::projects_id_policies_policy_id_cedar_get,
         projects::projects_id_policies_policy_id_cedar_put,
         projects::projects_id_templates_get,
@@ -151,7 +157,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cedrus = Cedrus::new(db, cache, pubsub, group_admin).await;
     let state = AppState::new(cedrus);
     let shared_state = Arc::new(state);
-    let _ = Cedrus::init_project(&shared_state.cedrus, &config).await.unwrap();
+    let _ = Cedrus::init_project(&shared_state.cedrus, &config)
+        .await
+        .unwrap();
     let _ = Cedrus::init_cache(&shared_state.cedrus).await.unwrap();
     let _ = Cedrus::load_cache(&shared_state.cedrus).await.unwrap();
 

@@ -444,6 +444,79 @@ async fn projects_id_schema_cedar_put(
 }
 
 #[utoipa::path(
+    post,
+    path = "/v1/projects/{id}/schema/validate/cedar",
+    params(
+        ("id" = Uuid, Path, description = "Project id")
+    ),
+    request_body = CedarSyntax,
+    responses(
+        (status = 200, description = "Schema", body = Schema)
+    ),
+    security(
+        ("bearerAuth" = []),
+        ("apiKey" = []),
+    )
+)]
+async fn projects_id_schema_validate_cedar_post(
+    Extension(principal): Extension<EntityUid>,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+    Json(syntax): Json<CedarSyntax>,
+) -> Result<AppJson<Schema>, AppError> 
+{
+    if !state.cedrus.is_allow(principal, CedrusActions::PutProjectSchema.value(), Project::entity_uid(id)) {
+        return Err(AppError::Forbidden);
+    }
+
+    let Some(str) = syntax.cedar else {
+        return Err(AppError::BadRequest);
+    };
+
+    let (cedar_schema, _warnings) = cedar_policy::SchemaFragment::from_cedarschema_str(&str)
+        .map_err(|_| AppError::BadRequest)?;
+    let json = cedar_schema.to_json_value().unwrap();
+    let schema: Schema = serde_json::from_value(json).unwrap();
+
+    Ok(AppJson(schema))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/projects/{id}/schema/validate/json",
+    params(
+        ("id" = Uuid, Path, description = "Project id")
+    ),
+    request_body = Schema,
+    responses(
+        (status = 200, description = "CedarSyntax", body = CedarSyntax)
+    ),
+    security(
+        ("bearerAuth" = []),
+        ("apiKey" = []),
+    )
+)]
+async fn projects_id_schema_validate_json_post(
+    Extension(principal): Extension<EntityUid>,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+    Json(schema): Json<Schema>,
+) -> Result<AppJson<CedarSyntax>, AppError> 
+{
+    if !state.cedrus.is_allow(principal, CedrusActions::PutProjectSchema.value(), Project::entity_uid(id)) {
+        return Err(AppError::Forbidden);
+    }
+
+    let value = serde_json::to_value(&schema).map_err(|_| AppError::BadRequest)?;
+    let cedar_schema = cedar_policy::SchemaFragment::from_json_value(value)
+        .map_err(|_| AppError::BadRequest)?;
+    let cedar = cedar_schema.to_cedarschema()
+        .map_err(|_| AppError::BadRequest)?;
+    
+    Ok(AppJson(CedarSyntax { cedar: Some(cedar) }))
+}
+
+#[utoipa::path(
     get,
     path = "/v1/projects/{id}/entities",
     params(
@@ -1326,6 +1399,14 @@ pub fn routes() -> Router<Arc<AppState>>
         .route("/{id}/schema", delete(projects_id_schema_delete))
         .route("/{id}/schema/cedar", get(projects_id_schema_cedar_get))
         .route("/{id}/schema/cedar", put(projects_id_schema_cedar_put))
+        .route(
+            "/{id}/schema/validate/cedar",
+            post(projects_id_schema_validate_cedar_post),
+        )
+        .route(
+            "/{id}/schema/validate/json",
+            post(projects_id_schema_validate_json_post),
+        )
         .route("/{id}/entities", get(projects_id_entities_get))
         .route("/{id}/entities", post(projects_id_entities_post))
         .route(
