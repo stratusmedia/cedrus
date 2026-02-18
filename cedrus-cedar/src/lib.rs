@@ -1366,8 +1366,7 @@ pub enum ValueExpr {
     Boolean(bool),
     Set(SetExpr),
     Record(RecordExpr),
-    EntityUid(EntityUid),
-    Function(ExtensionFn),
+    EntityUidEscape(EntityUidEscape),
 }
 
 impl Default for ValueExpr {
@@ -1392,11 +1391,8 @@ impl From<proto::json_expr::ValueExpr> for ValueExpr {
                     .map(|(k, v)| (k, JsonExpr::from(v)))
                     .collect(),
             }),
-            proto::json_expr::value_expr::Value::Euid(e) => {
-                ValueExpr::EntityUid(EntityUid::from(e))
-            }
-            proto::json_expr::value_expr::Value::Efn(f) => {
-                ValueExpr::Function(ExtensionFn::from(f))
+            proto::json_expr::value_expr::Value::Euide(e) => {
+                ValueExpr::EntityUidEscape(EntityUidEscape::from(e))
             }
         }
     }
@@ -1419,8 +1415,9 @@ impl Into<proto::json_expr::ValueExpr> for ValueExpr {
                         record: r.record.into_iter().map(|(k, v)| (k, v.into())).collect(),
                     },
                 ),
-                ValueExpr::EntityUid(e) => proto::json_expr::value_expr::Value::Euid(e.into()),
-                ValueExpr::Function(f) => proto::json_expr::value_expr::Value::Efn(f.into()),
+                ValueExpr::EntityUidEscape(e) => {
+                    proto::json_expr::value_expr::Value::Euide(e.into())
+                }
             }),
         }
     }
@@ -1539,9 +1536,6 @@ pub struct IsExpr {
     #[schema(no_recursion)]
     left: JsonExpr,
     entity_type: String,
-    #[serde(rename = "in")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    r#in: Option<EntityUid>,
 }
 
 impl From<proto::json_expr::IsExpr> for IsExpr {
@@ -1549,7 +1543,6 @@ impl From<proto::json_expr::IsExpr> for IsExpr {
         Self {
             left: JsonExpr::from(*value.left.unwrap()),
             entity_type: value.entity_type,
-            r#in: value.r#in.map(|e| EntityUid::from(e)),
         }
     }
 }
@@ -1559,7 +1552,6 @@ impl Into<proto::json_expr::IsExpr> for IsExpr {
         proto::json_expr::IsExpr {
             left: Some(::prost::alloc::boxed::Box::new(self.left.into())),
             entity_type: self.entity_type,
-            r#in: self.r#in.map(|e| e.into()),
         }
     }
 }
@@ -1656,6 +1648,8 @@ pub enum JsonExpr {
     Bang(Box<NegExpr>),
     #[serde(rename = "neg")]
     Neg(Box<NegExpr>),
+    #[serde(rename = "isEmpty")]
+    IsEmpty(Box<NegExpr>),
 
     #[serde(rename = "==")]
     Eq(Box<BinaryExpr>),
@@ -1711,15 +1705,77 @@ pub enum JsonExpr {
     #[schema(no_recursion)]
     Record(HashMap<String, JsonExpr>),
 
+    #[serde(rename = "datetime")]
+    #[schema(no_recursion)]
+    Datetime(Vec<JsonExpr>),
     #[serde(rename = "decimal")]
     #[schema(no_recursion)]
     Decimal(Vec<JsonExpr>),
+    #[serde(rename = "duration")]
+    #[schema(no_recursion)]
+    Duration(Vec<JsonExpr>),
     #[serde(rename = "ip")]
     #[schema(no_recursion)]
     Ip(Vec<JsonExpr>),
+
+    //IP address functions
+    #[serde(rename = "isIpV4")]
+    #[schema(no_recursion)]
+    IsIpV4(Vec<JsonExpr>),
+    #[serde(rename = "isIpV6")]
+    #[schema(no_recursion)]
+    IsIpV6(Vec<JsonExpr>),
+    #[serde(rename = "isLoopback")]
+    #[schema(no_recursion)]
+    IsLoopback(Vec<JsonExpr>),
+    #[serde(rename = "isMulticast")]
+    #[schema(no_recursion)]
+    IsMulticast(Vec<JsonExpr>),
     #[serde(rename = "isInRange")]
     #[schema(no_recursion)]
     IsInRange(Vec<JsonExpr>),
+
+    //Datetime functions
+    #[serde(rename = "offset")]
+    #[schema(no_recursion)]
+    Offset(Vec<JsonExpr>),
+    #[serde(rename = "durationSince")]
+    #[schema(no_recursion)]
+    DurationSince(Vec<JsonExpr>),
+    #[serde(rename = "toDate")]
+    #[schema(no_recursion)]
+    ToDate(Vec<JsonExpr>),
+    #[serde(rename = "toTime")]
+    #[schema(no_recursion)]
+    ToTime(Vec<JsonExpr>),
+    #[serde(rename = "toMilliseconds")]
+    #[schema(no_recursion)]
+    ToMilliseconds(Vec<JsonExpr>),
+    #[serde(rename = "toSeconds")]
+    #[schema(no_recursion)]
+    ToSeconds(Vec<JsonExpr>),
+    #[serde(rename = "toMinutes")]
+    #[schema(no_recursion)]
+    ToMinutes(Vec<JsonExpr>),
+    #[serde(rename = "toHours")]
+    #[schema(no_recursion)]
+    ToHours(Vec<JsonExpr>),
+    #[serde(rename = "toDays")]
+    #[schema(no_recursion)]
+    ToDays(Vec<JsonExpr>),
+
+    #[serde(rename = "lessThan")]
+    #[schema(no_recursion)]
+    LessThan(Vec<JsonExpr>),
+    #[serde(rename = "lessThanOrEqual")]
+    #[schema(no_recursion)]
+    LessThanOrEqual(Vec<JsonExpr>),
+    #[serde(rename = "greaterThan")]
+    #[schema(no_recursion)]
+    GreaterThan(Vec<JsonExpr>),
+    #[serde(rename = "greaterThanOrEqual")]
+    #[schema(no_recursion)]
+    GreaterThanOrEqual(Vec<JsonExpr>),
 }
 
 impl Default for JsonExpr {
@@ -1740,6 +1796,7 @@ impl From<proto::JsonExpr> for JsonExpr {
             }
             proto::json_expr::Expr::Neg(expr) => JsonExpr::Neg(Box::new((*expr).into())),
             proto::json_expr::Expr::Bang(expr) => JsonExpr::Neg(Box::new((*expr).into())),
+            proto::json_expr::Expr::IsEmpty(expr) => JsonExpr::IsEmpty(Box::new((*expr).into())),
             proto::json_expr::Expr::Eq(expr) => JsonExpr::Eq(Box::new((*expr).into())),
             proto::json_expr::Expr::Neq(expr) => JsonExpr::Neq(Box::new((*expr).into())),
             proto::json_expr::Expr::In(expr) => JsonExpr::In(Box::new((*expr).into())),
@@ -1778,15 +1835,72 @@ impl From<proto::JsonExpr> for JsonExpr {
                     .map(|(k, v)| (k, JsonExpr::from(v)))
                     .collect(),
             ),
+            proto::json_expr::Expr::Datetime(set) => {
+                JsonExpr::Datetime(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
             proto::json_expr::Expr::Decimal(set) => {
                 JsonExpr::Decimal(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
             }
+            proto::json_expr::Expr::Duration(set) => {
+                JsonExpr::Duration(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
             proto::json_expr::Expr::Ip(set) => {
-                JsonExpr::Decimal(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::Ip(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
+            proto::json_expr::Expr::IsIpV4(set) => {
+                JsonExpr::IsIpV4(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
+            proto::json_expr::Expr::IsIpV6(set) => {
+                JsonExpr::IsIpV6(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
+            proto::json_expr::Expr::IsLoopback(set) => {
+                JsonExpr::IsLoopback(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
+            proto::json_expr::Expr::IsMulticast(set) => {
+                JsonExpr::IsMulticast(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
             }
             proto::json_expr::Expr::IsInRange(set) => {
-                JsonExpr::Decimal(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::IsInRange(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
             }
+            proto::json_expr::Expr::Offset(set) => {
+                JsonExpr::Offset(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
+            proto::json_expr::Expr::DurationSince(set) => {
+                JsonExpr::DurationSince(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
+            proto::json_expr::Expr::ToDate(set) => {
+                JsonExpr::ToDate(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
+            proto::json_expr::Expr::ToTime(set) => {
+                JsonExpr::ToTime(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
+            proto::json_expr::Expr::ToMilliseconds(set) => {
+                JsonExpr::ToMilliseconds(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
+            proto::json_expr::Expr::ToSeconds(set) => {
+                JsonExpr::ToSeconds(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
+            proto::json_expr::Expr::ToMinutes(set) => {
+                JsonExpr::ToMinutes(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
+            proto::json_expr::Expr::ToHours(set) => {
+                JsonExpr::ToHours(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
+            proto::json_expr::Expr::ToDays(set) => {
+                JsonExpr::ToDays(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
+            proto::json_expr::Expr::LessThan(set) => {
+                JsonExpr::LessThan(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
+            proto::json_expr::Expr::LessThanOrEqual(set) => {
+                JsonExpr::LessThanOrEqual(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
+            proto::json_expr::Expr::GreaterThan(set) => {
+                JsonExpr::GreaterThan(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+            }
+            proto::json_expr::Expr::GreaterThanOrEqual(set) => JsonExpr::GreaterThanOrEqual(
+                set.set.into_iter().map(|e| JsonExpr::from(e)).collect(),
+            ),
         }
     }
 }
@@ -1809,6 +1923,11 @@ impl Into<proto::JsonExpr> for JsonExpr {
             },
             JsonExpr::Neg(expr) => proto::JsonExpr {
                 expr: Some(proto::json_expr::Expr::Neg(
+                    ::prost::alloc::boxed::Box::new((*expr).into()),
+                )),
+            },
+            JsonExpr::IsEmpty(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::IsEmpty(
                     ::prost::alloc::boxed::Box::new((*expr).into()),
                 )),
             },
@@ -1937,8 +2056,18 @@ impl Into<proto::JsonExpr> for JsonExpr {
                     record: expr.into_iter().map(|(k, v)| (k, v.into())).collect(),
                 })),
             },
+            JsonExpr::Datetime(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::Datetime(proto::json_expr::Set {
+                    set: expr.into_iter().map(|v| v.into()).collect(),
+                })),
+            },
             JsonExpr::Decimal(expr) => proto::JsonExpr {
                 expr: Some(proto::json_expr::Expr::Decimal(proto::json_expr::Set {
+                    set: expr.into_iter().map(|v| v.into()).collect(),
+                })),
+            },
+            JsonExpr::Duration(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::Duration(proto::json_expr::Set {
                     set: expr.into_iter().map(|v| v.into()).collect(),
                 })),
             },
@@ -1947,10 +2076,103 @@ impl Into<proto::JsonExpr> for JsonExpr {
                     set: expr.into_iter().map(|v| v.into()).collect(),
                 })),
             },
+            JsonExpr::IsIpV4(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::IsIpV4(proto::json_expr::Set {
+                    set: expr.into_iter().map(|v| v.into()).collect(),
+                })),
+            },
+            JsonExpr::IsIpV6(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::IsIpV6(proto::json_expr::Set {
+                    set: expr.into_iter().map(|v| v.into()).collect(),
+                })),
+            },
+            JsonExpr::IsLoopback(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::IsLoopback(proto::json_expr::Set {
+                    set: expr.into_iter().map(|v| v.into()).collect(),
+                })),
+            },
+            JsonExpr::IsMulticast(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::IsMulticast(proto::json_expr::Set {
+                    set: expr.into_iter().map(|v| v.into()).collect(),
+                })),
+            },
             JsonExpr::IsInRange(expr) => proto::JsonExpr {
                 expr: Some(proto::json_expr::Expr::IsInRange(proto::json_expr::Set {
                     set: expr.into_iter().map(|v| v.into()).collect(),
                 })),
+            },
+            JsonExpr::Offset(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::Offset(proto::json_expr::Set {
+                    set: expr.into_iter().map(|v| v.into()).collect(),
+                })),
+            },
+            JsonExpr::DurationSince(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::DurationSince(
+                    proto::json_expr::Set {
+                        set: expr.into_iter().map(|v| v.into()).collect(),
+                    },
+                )),
+            },
+            JsonExpr::ToDate(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::ToDate(proto::json_expr::Set {
+                    set: expr.into_iter().map(|v| v.into()).collect(),
+                })),
+            },
+            JsonExpr::ToTime(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::ToTime(proto::json_expr::Set {
+                    set: expr.into_iter().map(|v| v.into()).collect(),
+                })),
+            },
+            JsonExpr::ToMilliseconds(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::ToMilliseconds(
+                    proto::json_expr::Set {
+                        set: expr.into_iter().map(|v| v.into()).collect(),
+                    },
+                )),
+            },
+            JsonExpr::ToSeconds(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::ToSeconds(proto::json_expr::Set {
+                    set: expr.into_iter().map(|v| v.into()).collect(),
+                })),
+            },
+            JsonExpr::ToMinutes(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::ToMinutes(proto::json_expr::Set {
+                    set: expr.into_iter().map(|v| v.into()).collect(),
+                })),
+            },
+            JsonExpr::ToHours(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::ToHours(proto::json_expr::Set {
+                    set: expr.into_iter().map(|v| v.into()).collect(),
+                })),
+            },
+            JsonExpr::ToDays(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::ToDays(proto::json_expr::Set {
+                    set: expr.into_iter().map(|v| v.into()).collect(),
+                })),
+            },
+            JsonExpr::LessThan(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::LessThan(proto::json_expr::Set {
+                    set: expr.into_iter().map(|v| v.into()).collect(),
+                })),
+            },
+            JsonExpr::LessThanOrEqual(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::LessThanOrEqual(
+                    proto::json_expr::Set {
+                        set: expr.into_iter().map(|v| v.into()).collect(),
+                    },
+                )),
+            },
+            JsonExpr::GreaterThan(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::GreaterThan(proto::json_expr::Set {
+                    set: expr.into_iter().map(|v| v.into()).collect(),
+                })),
+            },
+            JsonExpr::GreaterThanOrEqual(expr) => proto::JsonExpr {
+                expr: Some(proto::json_expr::Expr::GreaterThanOrEqual(
+                    proto::json_expr::Set {
+                        set: expr.into_iter().map(|v| v.into()).collect(),
+                    },
+                )),
             },
         }
     }

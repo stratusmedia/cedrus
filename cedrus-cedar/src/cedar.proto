@@ -181,40 +181,63 @@ message JsonExpr {
 
     NegExpr neg = 4;
     NegExpr bang = 5;
+    NegExpr isEmpty = 6;
 
-    BinaryExpr eq = 6;
-    BinaryExpr neq = 7;
-    BinaryExpr in = 8;
-    BinaryExpr lt = 9;
-    BinaryExpr lte = 10;
-    BinaryExpr gt = 11;
-    BinaryExpr gte = 12;
-    BinaryExpr and = 13;
-    BinaryExpr or = 14;
-    BinaryExpr plus = 15;
-    BinaryExpr minus = 16;
-    BinaryExpr mul = 17;
-    BinaryExpr contains = 18;
-    BinaryExpr containsAll = 19;
-    BinaryExpr containsAny = 20;
-    BinaryExpr hasTag = 21;
-    BinaryExpr getTag = 22;
+    BinaryExpr eq = 7;
+    BinaryExpr neq = 8;
+    BinaryExpr in = 9;
+    BinaryExpr lt = 10;
+    BinaryExpr lte = 11;
+    BinaryExpr gt = 12;
+    BinaryExpr gte = 13;
+    BinaryExpr and = 14;
+    BinaryExpr or = 15;
+    BinaryExpr plus = 16;
+    BinaryExpr minus = 17;
+    BinaryExpr mul = 18;
+    BinaryExpr contains = 19;
+    BinaryExpr containsAll = 20;
+    BinaryExpr containsAny = 21;
+    BinaryExpr hasTag = 22;
+    BinaryExpr getTag = 23;
 
-    HasExpr has = 23;
-    HasExpr dot = 24;
+    HasExpr has = 24;
+    HasExpr dot = 25;
 
-    IsExpr is = 25;
+    IsExpr is = 26;
 
-    LikeExpr like = 26;
+    LikeExpr like = 27;
 
-    IfThenElseExpr ifThenElse = 27;
+    IfThenElseExpr ifThenElse = 28;
 
-    Set set = 28;
-    Record record = 29;
+    Set set = 29;
+    Record record = 30;
 
-    Set decimal = 30;
-    Set ip = 31;
-    Set isInRange = 32;
+    Set datetime = 31;
+    Set decimal = 32;
+    Set duration = 33;
+    Set ip = 34;
+
+    Set isIpV4 = 35;
+    Set isIpV6 = 36;
+    Set isLoopback = 37;
+    Set isMulticast = 38;
+    Set isInRange = 39;
+
+    Set offset = 40;
+    Set durationSince = 41;
+    Set toDate = 42;
+    Set toTime = 43;
+    Set toMilliseconds = 44;
+    Set toSeconds = 45;
+    Set toMinutes = 46;
+    Set toHours = 47;
+    Set toDays = 48;
+
+    Set lessThan = 49;
+    Set lessThanOrEqual = 50;
+    Set greaterThan = 51;
+    Set greaterThanOrEqual = 52;
   }
 
   message ValueExpr {
@@ -224,8 +247,7 @@ message JsonExpr {
       string s = 3;
       Set set = 4;
       Record record = 5;
-      EntityUid euid = 6;
-      ExtensionFn efn = 7;
+      EntityUidEscape euide = 6;
     }
   
     message Set {
@@ -261,7 +283,6 @@ message JsonExpr {
   message IsExpr {
     JsonExpr left = 1;
     string entityType = 2;
-    EntityUid in = 3;
   }
 
   message PatternElem {
