@@ -13,18 +13,161 @@ use cedrus_core::{
     pubsub::pubsub_factory,
 };
 use clap::Parser;
+use opentelemetry::trace::TracerProvider;
+use opentelemetry_sdk::propagation::TraceContextPropagator;
 use tower_http::{
     compression::CompressionLayer,
     cors::{Any, CorsLayer},
     trace::TraceLayer,
 };
-use tracing_subscriber::prelude::*;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::{
     Modify, OpenApi,
     openapi::security::{ApiKey, ApiKeyValue, Http, HttpAuthScheme, SecurityScheme},
     schema,
 };
 use utoipa_swagger_ui::SwaggerUi;
+
+/// Initializes the OpenTelemetry tracer provider with OTLP gRPC export.
+/// The OTLP endpoint defaults to `http://localhost:4317` and can be overridden
+/// via the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable.
+#[cfg(feature = "otlp")]
+fn init_tracer_provider() -> opentelemetry_sdk::trace::SdkTracerProvider {
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .build()
+        .expect("Failed to create OTLP span exporter");
+
+    opentelemetry_sdk::trace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(
+            opentelemetry_sdk::Resource::builder()
+                .with_service_name("cedrus")
+                .build(),
+        )
+        .build()
+}
+
+#[cfg(feature = "otlp")]
+fn init_logs() -> opentelemetry_sdk::logs::SdkLoggerProvider {
+    let exporter = opentelemetry_otlp::LogExporter::builder()
+        .with_tonic()
+        .build()
+        .expect("Failed to create OTLP log exporter");
+    opentelemetry_sdk::logs::SdkLoggerProvider::builder()
+        .with_simple_exporter(exporter)
+        .with_resource(
+            opentelemetry_sdk::Resource::builder()
+                .with_service_name("cedrus")
+                .build(),
+        )
+        .build()
+}
+
+#[cfg(feature = "otlp")]
+fn init_metrics() -> opentelemetry_sdk::metrics::SdkMeterProvider {
+    let exporter = opentelemetry_otlp::MetricExporter::builder()
+        .with_tonic()
+        .build()
+        .expect("Failed to create OTLP metric exporter");
+    opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+        .with_periodic_exporter(exporter)
+        .with_resource(
+            opentelemetry_sdk::Resource::builder()
+                .with_service_name("cedrus")
+                .build(),
+        )
+        .build()
+}
+
+#[cfg(feature = "stdout")]
+fn init_tracer_provider() -> opentelemetry_sdk::trace::SdkTracerProvider {
+    let exporter = opentelemetry_stdout::SpanExporter::default();
+
+    opentelemetry_sdk::trace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(
+            opentelemetry_sdk::Resource::builder()
+                .with_service_name("cedrus")
+                .build(),
+        )
+        .build()
+}
+
+#[cfg(feature = "stdout")]
+fn init_logs() -> opentelemetry_sdk::logs::SdkLoggerProvider {
+    let exporter = opentelemetry_stdout::LogExporter::default();
+    opentelemetry_sdk::logs::SdkLoggerProvider::builder()
+        .with_simple_exporter(exporter)
+        .with_resource(
+            opentelemetry_sdk::Resource::builder()
+                .with_service_name("cedrus")
+                .build(),
+        )
+        .build()
+}
+
+#[cfg(feature = "stdout")]
+fn init_metrics() -> opentelemetry_sdk::metrics::SdkMeterProvider {
+    let exporter = opentelemetry_stdout::MetricExporter::default();
+    opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+        .with_periodic_exporter(exporter)
+        .with_resource(
+            opentelemetry_sdk::Resource::builder()
+                .with_service_name("cedrus")
+                .build(),
+        )
+        .build()
+}
+
+#[cfg(feature = "zipkin")]
+fn init_tracer_provider() -> opentelemetry_sdk::trace::SdkTracerProvider {
+    let exporter = opentelemetry_zipkin::SpanExporter::builder()
+        .with_endpoint("http://localhost:9411/api/v2/spans")
+        .build()
+        .expect("Failed to create Zipkin span exporter");
+
+    opentelemetry_sdk::trace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(
+            opentelemetry_sdk::Resource::builder()
+                .with_service_name("cedrus")
+                .build(),
+        )
+        .build()
+}
+
+#[cfg(feature = "zipkin")]
+fn init_logs() -> opentelemetry_sdk::logs::SdkLoggerProvider {
+    let exporter = opentelemetry_zipkin::LogExporter::builder()
+        .with_endpoint("http://localhost:9411/api/v2/logs")
+        .build()
+        .expect("Failed to create Zipkin log exporter");
+    opentelemetry_sdk::logs::SdkLoggerProvider::builder()
+        .with_simple_exporter(exporter)
+        .with_resource(
+            opentelemetry_sdk::Resource::builder()
+                .with_service_name("cedrus")
+                .build(),
+        )
+        .build()
+}
+
+#[cfg(feature = "zipkin")]
+fn init_metrics() -> opentelemetry_sdk::metrics::SdkMeterProvider {
+    let exporter = opentelemetry_zipkin::MetricExporter::builder()
+        .with_endpoint("http://localhost:9411/api/v2/metrics")
+        .build()
+        .expect("Failed to create Zipkin metric exporter");
+    opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+        .with_periodic_exporter(exporter)
+        .with_resource(
+            opentelemetry_sdk::Resource::builder()
+                .with_service_name("cedrus")
+                .build(),
+        )
+        .build()
+}
 
 struct SecurityAddon;
 
@@ -138,9 +281,30 @@ fn subscribe_closure<'a>(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Set up W3C Trace Context propagation
+    opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
+
+    // Initialize the OpenTelemetry tracer provider
+    let tracer_provider = init_tracer_provider();
+    let tracer = tracer_provider.tracer("cedrus");
+    opentelemetry::global::set_tracer_provider(tracer_provider.clone());
+
+    // Initialize the OpenTelemetry logs provider
+    let logs_provider = init_logs();
+
+    // Initialize the OpenTelemetry metrics provider
+    let metrics_provider = init_metrics();
+    opentelemetry::global::set_meter_provider(metrics_provider.clone());
+
+    let filter_layer = tracing_subscriber::EnvFilter::try_from_default_env()
+        .or_else(|_| tracing_subscriber::EnvFilter::try_new("info"))
+        .unwrap();
+
+    // Build the tracing subscriber with both fmt (console) and OpenTelemetry layers
     tracing_subscriber::registry()
+        .with(filter_layer)
         .with(tracing_subscriber::fmt::layer())
-        .with(tracing_subscriber::EnvFilter::from_default_env())
+        .with(tracing_opentelemetry::layer().with_tracer(tracer))
         .init();
 
     let args = Args::parse();
@@ -194,6 +358,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = format!("{}:{}", config.server.host, config.server.port);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
+
+    // Gracefully shut down the tracer provider, flushing remaining spans
+    tracer_provider.shutdown()?;
+    logs_provider.shutdown()?;
+    metrics_provider.shutdown()?;
 
     Ok(())
 }
@@ -269,8 +438,8 @@ mod tests {
             resource
         )
         when { principal in resource.editors };"#;
-                let p = cedar_policy::Policy::parse(None, policy_src).unwrap();
-                println!("POLICY: {}", serde_json::to_string(&p.to_json().unwrap()).unwrap());
+        let p = cedar_policy::Policy::parse(None, policy_src).unwrap();
+        println!("POLICY: {}", serde_json::to_string(&p.to_json().unwrap()).unwrap());
         */
 
         let policies_json =

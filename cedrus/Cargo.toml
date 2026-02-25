@@ -25,7 +25,15 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio =  { workspace = true }
 tower-http = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+opentelemetry-appender-tracing = { workspace = true }
+opentelemetry-otlp = { workspace = true, optional = true }
+opentelemetry-stdout = { workspace = true, optional = true }
+opentelemetry-zipkin = { workspace = true, optional = true }
 tracing = { workspace = true }
+tracing-core = { workspace = true }
+tracing-opentelemetry = { workspace = true }
 tracing-subscriber = { workspace = true }
 utoipa = { workspace = true }
 utoipa-swagger-ui ={ workspace = true }
@@ -48,3 +56,9 @@ path = "src/bin/cedrus.rs"
 test = false
 bench = false
 doc = true
+
+[features]
+default = ["stdout"]
+otlp = ["opentelemetry-otlp"]
+stdout = ["opentelemetry-stdout"]
+zipkin = ["opentelemetry-zipkin"]

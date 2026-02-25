@@ -15,6 +15,7 @@ use crate::AppState;
 
 const X_API_KEY: &str = "x-api-key";
 
+#[tracing::instrument(skip(h))]
 fn stract_token(h: &http::HeaderMap) -> Option<String> {
     let bearer_o: Option<Authorization<Bearer>> = h.typed_get();
     bearer_o.map(|b| String::from(b.0.token()))
@@ -35,6 +36,7 @@ impl IntoResponse for AuthError {
     }
 }
 
+#[tracing::instrument(name = "authorize", skip(state, req, next))]
 pub async fn authorize(
     State(state): State<Arc<AppState>>,
     mut req: Request,
@@ -60,14 +62,14 @@ pub async fn authorize(
 
         match state.tokens.get_value_or_guard_async(&token).await {
             Ok(entity_uid) => {
-                println!("Cache hit");
+                tracing::info!("auth cache hit");
                 req.extensions_mut().insert(entity_uid);
             }
             Err(guard) => {
-                println!("Cache miss");
+                tracing::info!("auth cache miss");
                 let authorizer = state.cedrus.project_authorizers.get(&Uuid::nil());
                 let Some(authorizer) = authorizer else {
-                    println!("No authorizer found1");
+                    tracing::warn!("no authorizer found for nil project");
                     return Err(AuthError {
                         message: "Unauthorized".to_string(),
                         status_code: StatusCode::UNAUTHORIZED,
@@ -79,7 +81,7 @@ pub async fn authorize(
                 let token_data = match authorizer.jwt.check_auth(&token).await {
                     Ok(token_data) => token_data,
                     Err(err) => {
-                        println!("No authorizer found2 {err:?}");
+                        tracing::warn!(error = ?err, "JWT validation failed");
                         return Err(AuthError {
                             message: "Unauthorized".to_string(),
                             status_code: StatusCode::UNAUTHORIZED,

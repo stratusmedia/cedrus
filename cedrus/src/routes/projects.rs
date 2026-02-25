@@ -49,12 +49,12 @@ pub struct CedarSyntax {
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_get", skip(principal, state, query_params))]
 async fn projects_get(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
     Query(query_params): Query<QueryParams>,
 ) -> Result<AppJson<PageList<Project>>, AppError> {
-    tracing::info!("principal: {:?}", principal);
     let page = if state.cedrus.is_admin(&principal) {
         state.cedrus.projects_find(query_params.into()).await?
     } else {
@@ -80,6 +80,7 @@ async fn projects_get(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_post", skip(principal, state, project))]
 async fn projects_post(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -106,6 +107,7 @@ async fn projects_post(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_get", skip(principal, state), fields(project_id = %id))]
 async fn projects_id_get(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -138,6 +140,7 @@ async fn projects_id_get(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_put", skip(principal, state, project), fields(project_id = %id))]
 async fn projects_id_put(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -168,6 +171,7 @@ async fn projects_id_put(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_delete", skip(principal, state), fields(project_id = %id))]
 async fn projects_id_delete(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -200,6 +204,7 @@ async fn projects_id_delete(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_identity_source_get", skip(principal, state), fields(project_id = %id))]
 async fn projects_id_identity_source_get(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -230,6 +235,7 @@ async fn projects_id_identity_source_get(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_identity_source_put", skip(principal, state, identity_source), fields(project_id = %id))]
 async fn projects_id_identity_source_put(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -260,6 +266,7 @@ async fn projects_id_identity_source_put(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_identity_source_delete", skip(principal, state), fields(project_id = %id))]
 async fn projects_id_identity_source_delete(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -289,6 +296,7 @@ async fn projects_id_identity_source_delete(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_schema_get", skip(principal, state), fields(project_id = %id))]
 async fn projects_id_schema_get(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -319,6 +327,7 @@ async fn projects_id_schema_get(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_schema_put", skip(principal, state, schema), fields(project_id = %id))]
 async fn projects_id_schema_put(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -349,6 +358,7 @@ async fn projects_id_schema_put(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_schema_delete", skip(principal, state), fields(project_id = %id))]
 async fn projects_id_schema_delete(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -378,6 +388,7 @@ async fn projects_id_schema_delete(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_schema_cedar_get", skip(principal, state), fields(project_id = %id))]
 async fn projects_id_schema_cedar_get(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -417,6 +428,7 @@ async fn projects_id_schema_cedar_get(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_schema_cedar_put", skip(principal, state, syntax), fields(project_id = %id))]
 async fn projects_id_schema_cedar_put(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -458,6 +470,7 @@ async fn projects_id_schema_cedar_put(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_schema_validate_cedar_post", skip(principal, state, syntax), fields(project_id = %id))]
 async fn projects_id_schema_validate_cedar_post(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -496,6 +509,7 @@ async fn projects_id_schema_validate_cedar_post(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_schema_validate_json_post", skip(principal, state, schema), fields(project_id = %id))]
 async fn projects_id_schema_validate_json_post(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -531,6 +545,7 @@ async fn projects_id_schema_validate_json_post(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_entities_get", skip(principal, state, query_params), fields(project_id = %id))]
 async fn projects_id_entities_get(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -562,6 +577,7 @@ async fn projects_id_entities_get(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_entities_post", skip(principal, state, entities), fields(project_id = %id))]
 async fn projects_id_entities_post(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -593,6 +609,7 @@ async fn projects_id_entities_post(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_entities_delete", skip(principal, state, project_ids), fields(project_id = %id))]
 async fn projects_id_entities_delete(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -626,6 +643,7 @@ async fn projects_id_entities_delete(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_policies_get", skip(principal, state, query_params), fields(project_id = %id))]
 async fn projects_id_policies_get(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -659,6 +677,7 @@ async fn projects_id_policies_get(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_policies_validate_cedar_post", skip(principal, state, syntax), fields(project_id = %id))]
 async fn projects_id_policies_validate_cedar_post(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -695,6 +714,7 @@ async fn projects_id_policies_validate_cedar_post(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_policies_validate_json_post", skip(principal, state, policy), fields(project_id = %id))]
 async fn projects_id_policies_validate_json_post(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -730,6 +750,7 @@ async fn projects_id_policies_validate_json_post(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_policies_policy_id_cedar_get", skip(principal, state), fields(project_id = %id, policy_id = %policy_id))]
 async fn projects_id_policies_policy_id_cedar_get(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -779,6 +800,7 @@ async fn projects_id_policies_policy_id_cedar_get(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_policies_policy_id_cedar_put", skip(principal, state, syntax), fields(project_id = %id, policy_id = %policy_id))]
 async fn projects_id_policies_policy_id_cedar_put(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -817,6 +839,7 @@ async fn projects_id_policies_policy_id_cedar_put(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_policies_post", skip(principal, state, policies), fields(project_id = %id))]
 async fn projects_id_policies_post(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -850,6 +873,7 @@ async fn projects_id_policies_post(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_policies_delete", skip(principal, state, policy_ids), fields(project_id = %id))]
 async fn projects_id_policies_delete(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -883,6 +907,7 @@ async fn projects_id_policies_delete(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_templates_get", skip(principal, state, query_params), fields(project_id = %id))]
 async fn projects_id_templates_get(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -916,6 +941,7 @@ async fn projects_id_templates_get(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_templates_post", skip(principal, state, templates), fields(project_id = %id))]
 async fn projects_id_templates_post(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -949,6 +975,7 @@ async fn projects_id_templates_post(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_templates_delete", skip(principal, state, template_ids), fields(project_id = %id))]
 async fn projects_id_templates_delete(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -982,6 +1009,7 @@ async fn projects_id_templates_delete(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_templates_template_id_cedar_get", skip(principal, state), fields(project_id = %id, template_id = %template_id))]
 async fn projects_id_templates_template_id_cedar_get(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -1029,6 +1057,7 @@ async fn projects_id_templates_template_id_cedar_get(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_templates_template_id_cedar_put", skip(principal, state, syntax), fields(project_id = %id, template_id = %template_id))]
 async fn projects_id_templates_template_id_cedar_put(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -1067,6 +1096,7 @@ async fn projects_id_templates_template_id_cedar_put(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_template_links_get", skip(principal, state, query_params), fields(project_id = %id))]
 async fn projects_id_template_links_get(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -1100,6 +1130,7 @@ async fn projects_id_template_links_get(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_template_links_post", skip(principal, state, template_links), fields(project_id = %id))]
 async fn projects_id_template_links_post(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -1133,6 +1164,7 @@ async fn projects_id_template_links_post(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_template_links_delete", skip(principal, state, template_link_ids), fields(project_id = %id))]
 async fn projects_id_template_links_delete(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -1166,6 +1198,7 @@ async fn projects_id_template_links_delete(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_template_links_policy_id_cedar_get", skip(principal, state), fields(project_id = %id, template_id = %template_id))]
 async fn projects_id_template_links_policy_id_cedar_get(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -1213,6 +1246,7 @@ async fn projects_id_template_links_policy_id_cedar_get(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_template_links_policy_id_cedar_put", skip(principal, state, syntax), fields(project_id = %id, template_id = %template_id))]
 async fn projects_id_template_links_policy_id_cedar_put(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -1250,6 +1284,7 @@ async fn projects_id_template_links_policy_id_cedar_put(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_policy_set_get", skip(principal, state), fields(project_id = %id))]
 async fn projects_id_policy_set_get(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -1290,6 +1325,7 @@ async fn projects_id_policy_set_get(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_policy_set_cedar_get", skip(principal, state), fields(project_id = %id))]
 async fn projects_id_policy_set_cedar_get(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -1334,6 +1370,7 @@ async fn projects_id_policy_set_cedar_get(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_is_authorized_post", skip(principal, state, request), fields(project_id = %id))]
 async fn projects_id_is_authorized_post(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
@@ -1367,6 +1404,7 @@ async fn projects_id_is_authorized_post(
         ("apiKey" = []),
     )
 )]
+#[tracing::instrument(name = "projects_id_is_authorized_batch_post", skip(principal, state, request), fields(project_id = %id))]
 async fn projects_id_is_authorized_batch_post(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
