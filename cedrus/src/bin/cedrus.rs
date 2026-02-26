@@ -120,55 +120,6 @@ fn init_metrics() -> opentelemetry_sdk::metrics::SdkMeterProvider {
         .build()
 }
 
-#[cfg(feature = "zipkin")]
-fn init_tracer_provider() -> opentelemetry_sdk::trace::SdkTracerProvider {
-    let exporter = opentelemetry_zipkin::SpanExporter::builder()
-        .with_endpoint("http://localhost:9411/api/v2/spans")
-        .build()
-        .expect("Failed to create Zipkin span exporter");
-
-    opentelemetry_sdk::trace::SdkTracerProvider::builder()
-        .with_batch_exporter(exporter)
-        .with_resource(
-            opentelemetry_sdk::Resource::builder()
-                .with_service_name("cedrus")
-                .build(),
-        )
-        .build()
-}
-
-#[cfg(feature = "zipkin")]
-fn init_logs() -> opentelemetry_sdk::logs::SdkLoggerProvider {
-    let exporter = opentelemetry_zipkin::LogExporter::builder()
-        .with_endpoint("http://localhost:9411/api/v2/logs")
-        .build()
-        .expect("Failed to create Zipkin log exporter");
-    opentelemetry_sdk::logs::SdkLoggerProvider::builder()
-        .with_simple_exporter(exporter)
-        .with_resource(
-            opentelemetry_sdk::Resource::builder()
-                .with_service_name("cedrus")
-                .build(),
-        )
-        .build()
-}
-
-#[cfg(feature = "zipkin")]
-fn init_metrics() -> opentelemetry_sdk::metrics::SdkMeterProvider {
-    let exporter = opentelemetry_zipkin::MetricExporter::builder()
-        .with_endpoint("http://localhost:9411/api/v2/metrics")
-        .build()
-        .expect("Failed to create Zipkin metric exporter");
-    opentelemetry_sdk::metrics::SdkMeterProvider::builder()
-        .with_periodic_exporter(exporter)
-        .with_resource(
-            opentelemetry_sdk::Resource::builder()
-                .with_service_name("cedrus")
-                .build(),
-        )
-        .build()
-}
-
 struct SecurityAddon;
 
 impl Modify for SecurityAddon {

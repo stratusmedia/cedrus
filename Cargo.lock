@@ -889,7 +889,6 @@ dependencies = [
  "opentelemetry-appender-tracing",
  "opentelemetry-otlp",
  "opentelemetry-stdout",
- "opentelemetry-zipkin",
  "opentelemetry_sdk",
  "quick_cache",
  "serde",
@@ -2565,25 +2564,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "opentelemetry-zipkin"
-version = "0.29.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b63918f8bfbda96f303f4f0755a04aad8b0529b9fc7982f361d92ae67104088d"
-dependencies = [
- "futures-core",
- "http 1.4.0",
- "once_cell",
- "opentelemetry 0.29.1",
- "opentelemetry-http",
- "opentelemetry_sdk",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "typed-builder",
-]
-
-[[package]]
 name = "opentelemetry_sdk"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4066,26 +4046,6 @@ name = "typed-arena"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
-
-[[package]]
-name = "typed-builder"
-version = "0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd9d30e3a08026c78f246b173243cf07b3696d274debd26680773b6773c2afc7"
-dependencies = [
- "typed-builder-macro",
-]
-
-[[package]]
-name = "typed-builder-macro"
-version = "0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c36781cc0e46a83726d9879608e4cf6c2505237e263a8eb8c24502989cfdb28"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
 
 [[package]]
 name = "typenum"
