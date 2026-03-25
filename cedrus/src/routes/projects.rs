@@ -55,7 +55,7 @@ async fn projects_get(
     State(state): State<Arc<AppState>>,
     Query(query_params): Query<QueryParams>,
 ) -> Result<AppJson<PageList<Project>>, AppError> {
-    let page = if state.cedrus.is_admin(&principal) {
+    let page = if state.cedrus.is_allow(principal.clone(), CedrusActions::GetProject.value(), Project::entity_uid(Uuid::nil())) {
         state.cedrus.projects_find(query_params.into()).await?
     } else {
         let mut query: cedrus_core::Query = query_params.into();

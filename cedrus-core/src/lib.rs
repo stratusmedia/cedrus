@@ -41,6 +41,7 @@ impl Authorizer {
     }
 
     pub fn get_entity(&self, token: Value) -> Option<Entity> {
+        tracing::info!("get_entity: {}", token);
         let prefix = self.identity_source.prefix();
         let entity_type = self.identity_source.principal_entity_type.clone();
         let id_claim = self.identity_source.id_claim();
@@ -49,13 +50,22 @@ impl Authorizer {
 
         let parents: HashSet<EntityUid> = {
             if let Some(group_claim) = self.identity_source.group_claim() {
-                let group = token.get(group_claim)?;
-                let group = group.as_array().unwrap();
-                let group_entity_type = self.identity_source.group_entity_type().unwrap_or_default();
-                group
-                    .iter()
-                    .map(|v| EntityUid::new(group_entity_type.to_string(), format!("{}|{}", prefix, v.as_str().unwrap())))
-                    .collect::<HashSet<EntityUid>>()
+                if let Some(group) = token.get(group_claim) {
+                    let group = group.as_array().unwrap();
+                    let group_entity_type =
+                        self.identity_source.group_entity_type().unwrap_or_default();
+                    group
+                        .iter()
+                        .map(|v| {
+                            EntityUid::new(
+                                group_entity_type.to_string(),
+                                format!("{}", v.as_str().unwrap()),
+                            )
+                        })
+                        .collect::<HashSet<EntityUid>>()
+                } else {
+                    HashSet::new()
+                }
             } else {
                 HashSet::new()
             }

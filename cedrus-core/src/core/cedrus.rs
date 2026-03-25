@@ -22,7 +22,13 @@ pub async fn authorizer_factory(conf: &Configuration) -> jwt_authorizer::Authori
     match conf {
         Configuration::CognitoUserPoolConfiguration(conf) => {
             let url = conf.url_keys();
-            JwtAuthorizer::from_jwks_url(&url).build().await.unwrap()
+            let iss = vec![conf.iss()];
+            let validation = Validation::new().iss(&iss).aud(&conf.client_ids);
+            JwtAuthorizer::from_jwks_url(&url)
+                .validation(validation)
+                .build()
+                .await
+                .unwrap()
         }
         Configuration::OpenIdConnectConfiguration(conf) => {
             let validation = match &conf.token_selection {
@@ -45,8 +51,6 @@ pub async fn authorizer_factory(conf: &Configuration) -> jwt_authorizer::Authori
 pub struct Cedrus {
     pub id: Uuid, // Container Identity, used for cluster comunictaion
 
-    group_admin: EntityUid, // Entity Admins Group
-
     pub db: Box<dyn Database + Send + Sync>,
     pub cache: Box<dyn Cache + Send + Sync>,
     pub pubsub: Box<dyn PubSub + Send + Sync>,
@@ -64,11 +68,9 @@ impl Cedrus {
         db: Box<dyn Database + Send + Sync>,
         cache: Box<dyn Cache + Send + Sync>,
         pubsub: Box<dyn PubSub + Send + Sync>,
-        group_admin: EntityUid,
     ) -> Self {
         Self {
             id: Uuid::now_v7(),
-            group_admin,
 
             db,
             cache,
@@ -85,8 +87,10 @@ impl Cedrus {
 
     pub async fn init_project(state: &Cedrus, config: &CedrusConfig) -> Result<(), CedrusError> {
         // Find project with id nil
-        let project = state.db.project_load(&Uuid::nil()).await?;
-        if project.is_none() {
+        if let Some(mut project) = state.db.project_load(&Uuid::nil()).await? {
+            project.api_key = config.server.api_key.clone();
+            state.db.project_save(&project).await?;
+        } else {
             let schema_str = include_str!("../../config/cedrus.cedarschema.json");
             let entities_str = include_str!("../../config/cedrus.cedarentities.json");
             let policy_set_str = include_str!("../../config/cedrus.cedar.json");
@@ -417,28 +421,7 @@ impl Cedrus {
         Ok(cedar_policy::Entities::from_entities(entities, None)?)
     }
 
-    pub fn is_admin(&self, principal: &EntityUid) -> bool {
-        let Some(entities) = self.project_cedar_entities.get(&Uuid::nil()) else {
-            return false;
-        };
-        let Some(value) = entities.get(principal) else {
-            return false;
-        };
-        let (entity, _cedar_entity) = value.value();
-
-        if entity.parents().contains(&self.group_admin) {
-            println!("is_admin: true");
-            return true;
-        }
-
-        return false;
-    }
-
     pub fn is_allow(&self, principal: EntityUid, action: EntityUid, resource: EntityUid) -> bool {
-        if self.is_admin(&principal) {
-            return true;
-        }
-
         let start = std::time::Instant::now();
 
         let entity_uids = HashSet::from([principal.clone(), resource.clone()]);

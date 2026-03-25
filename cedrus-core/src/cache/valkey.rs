@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use cedrus_cedar::{
@@ -124,12 +124,22 @@ impl ValKeyCache {
     pub async fn new(conf: &core::ValKeyCacheConfig) -> Self {
         let conn = if conf.cluster {
             let client = redis::cluster::ClusterClient::new(conf.urls.clone()).unwrap();
-            let conn = client.get_async_connection().await.unwrap();
+            let config = redis::cluster::ClusterConfig::new()
+                .set_connection_timeout(Duration::from_secs(300));
+            let conn = client
+                .get_async_connection_with_config(config)
+                .await
+                .unwrap();
             ConnectionType::Cluster(conn)
         } else {
             let url = conf.urls.get(0).unwrap();
             let client = redis::Client::open(url.clone()).unwrap();
-            let conn = client.get_multiplexed_async_connection().await.unwrap();
+            let config = redis::AsyncConnectionConfig::new()
+                .set_connection_timeout(Some(Duration::from_secs(300)));
+            let conn = client
+                .get_multiplexed_async_connection_with_config(&config)
+                .await
+                .unwrap();
             ConnectionType::Multiplexed(conn)
         };
 

@@ -65,7 +65,10 @@ impl DynamoDb {
             let dynamodb_local_config = aws_sdk_dynamodb::config::Builder::from(&config).build();
             aws_sdk_dynamodb::Client::from_conf(dynamodb_local_config)
         } else {
-            let config = aws_config::from_env();
+            let mut config = aws_config::from_env();
+            if let Ok(_) = std::env::var("CEDRUS_IPV6") {
+                config = config.use_dual_stack(true);
+            }
             aws_sdk_dynamodb::Client::new(&config.load().await)
         };
 
@@ -299,7 +302,7 @@ impl DynamoDb {
     fn project_identity_source_from_item(
         &self,
         item: &HashMap<String, aws_sdk_dynamodb::types::AttributeValue>,
-    ) -> Result<IdentitySource, DatabaseError>{
+    ) -> Result<IdentitySource, DatabaseError> {
         Ok(serde_dynamo::from_item(item.clone())?)
     }
 
@@ -403,7 +406,10 @@ impl DynamoDb {
         Ok(serde_dynamo::from_item(item.clone())?)
     }
 
-    async fn batch_write_item(&self, request_items: Vec<WriteRequest>) -> Result<(), DatabaseError> {
+    async fn batch_write_item(
+        &self,
+        request_items: Vec<WriteRequest>,
+    ) -> Result<(), DatabaseError> {
         for chunk in request_items.chunks(25) {
             self.client
                 .batch_write_item()
@@ -568,7 +574,10 @@ impl Database for DynamoDb {
             }
             if let Some(key) = page.last_evaluated_key {
                 let value: serde_json::Value = serde_dynamo::from_item(key)?;
-                last_key = Some(serde_json::to_string(&value).map_err(|e| DatabaseError::SerializationError(e.to_string()))?);
+                last_key = Some(
+                    serde_json::to_string(&value)
+                        .map_err(|e| DatabaseError::SerializationError(e.to_string()))?,
+                );
             }
         }
 
@@ -633,8 +642,12 @@ impl Database for DynamoDb {
         while let Some(page) = stream.next().await {
             let page = page.map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
             for item in &page.items.unwrap_or_default() {
-                let Some(pk) = item.get("PK") else { continue; };
-                let Some(sk) = item.get("SK") else { continue; };
+                let Some(pk) = item.get("PK") else {
+                    continue;
+                };
+                let Some(sk) = item.get("SK") else {
+                    continue;
+                };
 
                 let request = WriteRequest::builder()
                     .delete_request(
@@ -669,8 +682,12 @@ impl Database for DynamoDb {
         while let Some(page) = stream.next().await {
             let page = page.map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
             for item in &page.items.unwrap_or_default() {
-                let Some(pk) = item.get("PK") else { continue; };
-                let Some(sk) = item.get("SK") else { continue; };
+                let Some(pk) = item.get("PK") else {
+                    continue;
+                };
+                let Some(sk) = item.get("SK") else {
+                    continue;
+                };
 
                 let request = WriteRequest::builder()
                     .delete_request(
@@ -884,7 +901,10 @@ impl Database for DynamoDb {
             }
             if let Some(key) = page.last_evaluated_key {
                 let value: serde_json::Value = serde_dynamo::from_item(key)?;
-                last_key = Some(serde_json::to_string(&value).map_err(|e| DatabaseError::SerializationError(e.to_string()))?);
+                last_key = Some(
+                    serde_json::to_string(&value)
+                        .map_err(|e| DatabaseError::SerializationError(e.to_string()))?,
+                );
             }
         }
 
@@ -902,7 +922,12 @@ impl Database for DynamoDb {
             let item = self.project_entity_to_item(project_id, entity)?;
 
             let request = WriteRequest::builder()
-                .put_request(PutRequest::builder().set_item(Some(item)).build().map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?)
+                .put_request(
+                    PutRequest::builder()
+                        .set_item(Some(item))
+                        .build()
+                        .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?,
+                )
                 .build();
 
             request_items.push(request);
@@ -988,8 +1013,12 @@ impl Database for DynamoDb {
         while let Some(page) = stream.next().await {
             let page = page.map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
             for item in page.items.unwrap_or_default() {
-                let Some(policy_id_attr) = item.get("policyId") else { continue; };
-                let Ok(policy_id_str) = policy_id_attr.as_s() else { continue; };
+                let Some(policy_id_attr) = item.get("policyId") else {
+                    continue;
+                };
+                let Ok(policy_id_str) = policy_id_attr.as_s() else {
+                    continue;
+                };
                 let policy_id = policy_id_str.to_string().into();
 
                 datas.insert(policy_id, Self::project_policy_from_item(&self, &item)?);
@@ -997,7 +1026,10 @@ impl Database for DynamoDb {
 
             if let Some(key) = page.last_evaluated_key {
                 let value: serde_json::Value = serde_dynamo::from_item(key)?;
-                last_key = Some(serde_json::to_string(&value).map_err(|e| DatabaseError::SerializationError(e.to_string()))?);
+                last_key = Some(
+                    serde_json::to_string(&value)
+                        .map_err(|e| DatabaseError::SerializationError(e.to_string()))?,
+                );
             }
         }
 
@@ -1015,7 +1047,12 @@ impl Database for DynamoDb {
             let item = self.project_policy_to_item(project_id, policy_id, policy)?;
 
             let request = WriteRequest::builder()
-                .put_request(PutRequest::builder().set_item(Some(item)).build().map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?)
+                .put_request(
+                    PutRequest::builder()
+                        .set_item(Some(item))
+                        .build()
+                        .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?,
+                )
                 .build();
 
             request_items.push(request);
@@ -1103,8 +1140,12 @@ impl Database for DynamoDb {
         while let Some(page) = stream.next().await {
             let page = page.map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
             for item in page.items.unwrap_or_default() {
-                let Some(policy_id_attr) = item.get("policyId") else { continue; };
-                let Ok(policy_id_str) = policy_id_attr.as_s() else { continue; };
+                let Some(policy_id_attr) = item.get("policyId") else {
+                    continue;
+                };
+                let Ok(policy_id_str) = policy_id_attr.as_s() else {
+                    continue;
+                };
                 let policy_id = policy_id_str.to_string().into();
 
                 datas.insert(policy_id, Self::project_template_from_item(&self, &item)?);
@@ -1112,7 +1153,10 @@ impl Database for DynamoDb {
 
             if let Some(key) = page.last_evaluated_key {
                 let value: serde_json::Value = serde_dynamo::from_item(key)?;
-                last_key = Some(serde_json::to_string(&value).map_err(|e| DatabaseError::SerializationError(e.to_string()))?);
+                last_key = Some(
+                    serde_json::to_string(&value)
+                        .map_err(|e| DatabaseError::SerializationError(e.to_string()))?,
+                );
             }
         }
 
@@ -1130,7 +1174,12 @@ impl Database for DynamoDb {
             let item = self.project_template_to_item(project_id, policy_id, template)?;
 
             let request = WriteRequest::builder()
-                .put_request(PutRequest::builder().set_item(Some(item)).build().map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?)
+                .put_request(
+                    PutRequest::builder()
+                        .set_item(Some(item))
+                        .build()
+                        .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?,
+                )
                 .build();
 
             request_items.push(request);
@@ -1222,7 +1271,10 @@ impl Database for DynamoDb {
             }
             if let Some(key) = page.last_evaluated_key {
                 let value: serde_json::Value = serde_dynamo::from_item(key)?;
-                last_key = Some(serde_json::to_string(&value).map_err(|e| DatabaseError::SerializationError(e.to_string()))?);
+                last_key = Some(
+                    serde_json::to_string(&value)
+                        .map_err(|e| DatabaseError::SerializationError(e.to_string()))?,
+                );
             }
         }
 
@@ -1240,7 +1292,12 @@ impl Database for DynamoDb {
             let item = self.project_template_link_to_item(project_id, template_link)?;
 
             let request = WriteRequest::builder()
-                .put_request(PutRequest::builder().set_item(Some(item)).build().map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?)
+                .put_request(
+                    PutRequest::builder()
+                        .set_item(Some(item))
+                        .build()
+                        .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?,
+                )
                 .build();
 
             request_items.push(request);

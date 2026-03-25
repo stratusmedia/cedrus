@@ -1,4 +1,3 @@
-use cedrus_cedar::EntityUid;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -27,6 +26,19 @@ pub mod is {
     }
 
     impl CognitoUserPoolConfiguration {
+        pub fn iss(&self) -> String {
+            let parts: Vec<&str> = self.user_pool_arn.split(':').collect();
+            let region = parts.get(3).expect("Invalid user pool ARN");
+            let user_pool_id = self
+                .user_pool_arn
+                .split('/')
+                .last()
+                .expect("Invalid user pool ARN")
+                .to_string();
+
+            format!("https://cognito-idp.{region}.amazonaws.com/{user_pool_id}")
+        }
+
         pub fn url_keys(&self) -> String {
             let parts: Vec<&str> = self.user_pool_arn.split(':').collect();
             let region = parts.get(3).expect("Invalid user pool ARN");
@@ -304,7 +316,6 @@ pub struct CedrusConfig {
     #[serde(default)]
     pub pubsub: PubSubConfig,
     pub identity_source: IdentitySource,
-    pub group_admin: EntityUid,
 }
 
 #[cfg(test)]
@@ -331,13 +342,14 @@ mod tests {
             ..Default::default()
         };
 
-        let configuration = Configuration::CognitoUserPoolConfiguration(CognitoUserPoolConfiguration {
-            user_pool_arn: "arn:aws:dynamodb:eu-west-1:1234567890:table/CEDRUS".to_string(),
-            client_ids: vec!["XXXXXXXXXXX".to_string()],
-            group_configuration: Some(CognitoGroupConfiguration {
-                group_entity_type: "Cedrus::Group".to_string(),
-            }),
-        });
+        let configuration =
+            Configuration::CognitoUserPoolConfiguration(CognitoUserPoolConfiguration {
+                user_pool_arn: "arn:aws:dynamodb:eu-west-1:1234567890:table/CEDRUS".to_string(),
+                client_ids: vec!["XXXXXXXXXXX".to_string()],
+                group_configuration: Some(CognitoGroupConfiguration {
+                    group_entity_type: "Cedrus::Group".to_string(),
+                }),
+            });
 
         let identity_source = IdentitySource {
             principal_entity_type: "Cedrus::User".to_string(),
@@ -359,7 +371,6 @@ mod tests {
             cache: CacheConfig::ValKeyConfig(cache),
             pubsub: PubSubConfig::ValKeyConfig(pubsub),
             identity_source: identity_source,
-            group_admin: EntityUid::new("Cedrus::Group".to_string(), "dasdad|CedrusAdmin".to_string()),
         };
 
         let json = serde_json::to_string(&config).unwrap();

@@ -216,7 +216,10 @@ struct ApiDoc;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
+    #[arg(short = 'c', long)]
     config: Option<String>,
+    #[arg(short = 'u', long)]
+    url_config: Option<String>,
 }
 
 fn subscribe_closure<'a>(
@@ -260,16 +263,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = Args::parse();
 
-    let config_file_name = args.config.expect("config file is required");
-    let config_file = std::fs::File::open(config_file_name).unwrap();
-    let config: CedrusConfig = serde_json::from_reader(config_file).unwrap();
+    let config: CedrusConfig = if let Some(config_file_name) = args.config {
+        let config_file = std::fs::File::open(&config_file_name)
+            .unwrap_or_else(|_| panic!("Failed to open config file: {}", config_file_name));
+        serde_json::from_reader(config_file).expect("Failed to parse config file")
+    } else if let Some(url_config) = args.url_config {
+        let response = reqwest::get(&url_config)
+            .await
+            .unwrap_or_else(|_| panic!("Failed connect to url: {}", url_config));
+        let config_file = response
+            .text()
+            .await
+            .unwrap_or_else(|_| panic!("Failed to get config from url: {}", url_config));
+        // Get config json from config_url url
+        serde_json::from_str(&config_file).expect("Failed to parse config file")
+    } else {
+        panic!("Either the config file or the config url argument must be provided");
+    };
+
+    println!("Config: {:#?}", config);
 
     let db = database_factory(&config.db).await;
     let cache = cache_factory(&config.cache).await;
     let pubsub = pubsub_factory(&config.pubsub).await;
-    let group_admin = config.group_admin.clone();
 
-    let cedrus = Cedrus::new(db, cache, pubsub, group_admin).await;
+    let cedrus = Cedrus::new(db, cache, pubsub).await;
     let state = AppState::new(cedrus);
     let shared_state = Arc::new(state);
     let _ = Cedrus::init_project(&shared_state.cedrus, &config)
@@ -306,7 +324,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(TraceLayer::new_for_http())
         .with_state(shared_state);
 
-    let addr = format!("{}:{}", config.server.host, config.server.port);
+    let addr = if let Ok(_) = std::env::var("CEDRUS_IPV6") {
+        format!("[{}]:{}", config.server.host, config.server.port)
+    } else {
+        format!("{}:{}", config.server.host, config.server.port)
+    };
+
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 
