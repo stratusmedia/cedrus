@@ -58,6 +58,9 @@ bench = false
 doc = true
 
 [features]
-default = ["otlp"]
+default = ["stdout", "trace", "metrics", "logs"]
 otlp = ["dep:opentelemetry-otlp"]
 stdout = ["dep:opentelemetry-stdout"]
+trace = ["opentelemetry/trace", "opentelemetry_sdk/trace"]
+metrics = ["opentelemetry/metrics", "opentelemetry_sdk/metrics"]
+logs = ["opentelemetry/logs", "opentelemetry_sdk/logs"]

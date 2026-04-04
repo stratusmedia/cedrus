@@ -14,6 +14,7 @@ use cedrus_core::{
 };
 use clap::Parser;
 use opentelemetry::trace::TracerProvider;
+use opentelemetry_appender_tracing::layer;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use tower_http::{
     compression::CompressionLayer,
@@ -32,7 +33,7 @@ use utoipa_swagger_ui::SwaggerUi;
 /// The OTLP endpoint defaults to `http://localhost:4317` and can be overridden
 /// via the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable.
 #[cfg(feature = "otlp")]
-fn init_tracer_provider() -> opentelemetry_sdk::trace::SdkTracerProvider {
+fn init_tracer() -> opentelemetry_sdk::trace::SdkTracerProvider {
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_tonic()
         .build()
@@ -81,7 +82,7 @@ fn init_metrics() -> opentelemetry_sdk::metrics::SdkMeterProvider {
 }
 
 #[cfg(feature = "stdout")]
-fn init_tracer_provider() -> opentelemetry_sdk::trace::SdkTracerProvider {
+fn init_tracer() -> opentelemetry_sdk::trace::SdkTracerProvider {
     let exporter = opentelemetry_stdout::SpanExporter::default();
 
     opentelemetry_sdk::trace::SdkTracerProvider::builder()
@@ -239,27 +240,55 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
 
     // Initialize the OpenTelemetry tracer provider
-    let tracer_provider = init_tracer_provider();
-    let tracer = tracer_provider.tracer("cedrus");
-    opentelemetry::global::set_tracer_provider(tracer_provider.clone());
+    #[cfg(feature = "trace")]
+    let tracer_provider = {
+        let tracer_provider = init_tracer();
+        opentelemetry::global::set_tracer_provider(tracer_provider.clone());
+        tracer_provider
+    };
 
     // Initialize the OpenTelemetry logs provider
-    let logs_provider = init_logs();
+    #[cfg(feature = "logs")]
+    let logs_provider = {
+        let logs_provider = init_logs();
+        logs_provider
+    };
 
     // Initialize the OpenTelemetry metrics provider
-    let metrics_provider = init_metrics();
-    opentelemetry::global::set_meter_provider(metrics_provider.clone());
+    #[cfg(feature = "metrics")]
+    let metrics_provider = {
+        let metrics_provider = init_metrics();
+        opentelemetry::global::set_meter_provider(metrics_provider.clone());
+        metrics_provider
+    };
 
     let filter_layer = tracing_subscriber::EnvFilter::try_from_default_env()
         .or_else(|_| tracing_subscriber::EnvFilter::try_new("info"))
         .unwrap();
 
-    // Build the tracing subscriber with both fmt (console) and OpenTelemetry layers
-    tracing_subscriber::registry()
+    // Build the tracing subscriber with both fmt (console) and conditionally OpenTelemetry layers
+    let registry = tracing_subscriber::registry()
         .with(filter_layer)
-        .with(tracing_subscriber::fmt::layer())
-        .with(tracing_opentelemetry::layer().with_tracer(tracer))
+        .with(tracing_subscriber::fmt::layer());
+
+    #[cfg(all(feature = "trace", feature = "logs"))]
+    registry
+        .with(tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer("cedrus")))
+        .with(layer::OpenTelemetryTracingBridge::new(&logs_provider))
         .init();
+
+    #[cfg(all(feature = "trace", not(feature = "logs")))]
+    registry
+        .with(tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer("cedrus")))
+        .init();
+
+    #[cfg(all(not(feature = "trace"), feature = "logs"))]
+    registry
+        .with(layer::OpenTelemetryTracingBridge::new(&logs_provider))
+        .init();
+
+    #[cfg(all(not(feature = "trace"), not(feature = "logs")))]
+    registry.init();
 
     let args = Args::parse();
 
@@ -280,8 +309,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         panic!("Either the config file or the config url argument must be provided");
     };
-
-    println!("Config: {:#?}", config);
 
     let db = database_factory(&config.db).await;
     let cache = cache_factory(&config.cache).await;
@@ -334,8 +361,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     axum::serve(listener, app).await.unwrap();
 
     // Gracefully shut down the tracer provider, flushing remaining spans
+    #[cfg(feature = "trace")]
     tracer_provider.shutdown()?;
+    #[cfg(feature = "logs")]
     logs_provider.shutdown()?;
+    #[cfg(feature = "metrics")]
     metrics_provider.shutdown()?;
 
     Ok(())
