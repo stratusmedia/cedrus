@@ -58,6 +58,6 @@ bench = false
 doc = true
 
 [features]
-default = ["stdout"]
+default = ["otlp"]
 otlp = ["dep:opentelemetry-otlp"]
 stdout = ["dep:opentelemetry-stdout"]
