@@ -4,7 +4,10 @@ use cedrus_cedar::{Entity, EntityUid, Policy, PolicyId, Schema, Template, Templa
 use couch_rs::error::CouchError;
 use uuid::Uuid;
 
-use crate::{core::{project::Project, DbConfig, IdentitySource}, PageHash, PageList, Query};
+use crate::{
+    PageHash, PageList, Query,
+    core::{DbConfig, IdentitySource, project::Project},
+};
 
 pub mod couchdb;
 pub mod dynamodb;
@@ -13,6 +16,7 @@ pub mod dynamodb;
 pub enum DatabaseError {
     NotFound,
     Unknown,
+    ConnectionError(String),
     MissingAttribute(String),
     InvalidAttribute(String),
     JsonErro(serde_json::Error),
@@ -27,6 +31,7 @@ impl std::fmt::Display for DatabaseError {
         match self {
             DatabaseError::NotFound => write!(f, "not found"),
             DatabaseError::Unknown => write!(f, "unknown"),
+            DatabaseError::ConnectionError(e) => write!(f, "connection error: {}", e),
             DatabaseError::MissingAttribute(a) => write!(f, "missing attribute: {}", a),
             DatabaseError::InvalidAttribute(a) => write!(f, "invalid attribute: {}", a),
             DatabaseError::JsonErro(e) => write!(f, "json error: {}", e.to_string()),
@@ -74,24 +79,16 @@ pub trait Database: Send + Sync {
         project_id: &Uuid,
         identity_source: &IdentitySource,
     ) -> Result<(), DatabaseError>;
-    async fn project_identity_source_remove(
-        &self,
-        project_id: &Uuid
-    ) -> Result<(), DatabaseError>;
+    async fn project_identity_source_remove(&self, project_id: &Uuid) -> Result<(), DatabaseError>;
 
-    async fn project_schema_load(
-        &self,
-        project_id: &Uuid,
-    ) -> Result<Option<Schema>, DatabaseError>;
+    async fn project_schema_load(&self, project_id: &Uuid)
+    -> Result<Option<Schema>, DatabaseError>;
     async fn project_schema_save(
         &self,
         project_id: &Uuid,
         schema: &Schema,
     ) -> Result<(), DatabaseError>;
-    async fn project_schema_remove(
-        &self,
-        project_id: &Uuid
-    ) -> Result<(), DatabaseError>;
+    async fn project_schema_remove(&self, project_id: &Uuid) -> Result<(), DatabaseError>;
 
     async fn project_entities_load(
         &self,
@@ -158,15 +155,19 @@ pub trait Database: Send + Sync {
     ) -> Result<(), DatabaseError>;
 }
 
-pub async fn database_factory(conf: &DbConfig) -> Box<dyn Database + Send + Sync> {
-    match conf {
-        DbConfig::DynamoDbConfig(conf) => {
-            Box::new(dynamodb::DynamoDb::new(&conf).await)
-        },
+pub async fn database_factory(
+    conf: &DbConfig,
+) -> Result<Box<dyn Database + Send + Sync>, DatabaseError> {
+    let db: Box<dyn Database + Send + Sync> = match conf {
+        DbConfig::DynamoDbConfig(conf) => Box::new(dynamodb::DynamoDb::new(&conf).await?),
         DbConfig::CouchDbConfig(conf) => {
-            let db = couchdb::CouchDb::new(&conf);
-            db.init().await.unwrap();
+            let db = couchdb::CouchDb::new(&conf)?;
+            db.init()
+                .await
+                .map_err(|e| DatabaseError::ConnectionError(e.to_string()))?;
             Box::new(db)
-        },
-    }
+        }
+    };
+
+    Ok(db)
 }

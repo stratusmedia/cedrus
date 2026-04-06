@@ -1,14 +1,15 @@
 use std::{error::Error, future::Future, pin::Pin};
 
-use crate::{core::PubSubConfig, Event};
+use crate::{Event, core::PubSubConfig};
 
-pub mod valkey;
 pub mod dummy;
+pub mod valkey;
 
 #[derive(Debug)]
 pub enum PubSubError {
     Connection,
     NotFound,
+    Publish,
 }
 
 impl std::fmt::Display for PubSubError {
@@ -16,6 +17,7 @@ impl std::fmt::Display for PubSubError {
         match self {
             PubSubError::Connection => write!(f, "Connection error"),
             PubSubError::NotFound => write!(f, "Not found"),
+            PubSubError::Publish => write!(f, "Publish error"),
         }
     }
 }
@@ -27,13 +29,17 @@ pub type Op<'a> =
 
 #[async_trait::async_trait]
 pub trait PubSub: Send + Sync {
-    async fn subscribe(&self, ops: &[Op<'_>]);
+    async fn subscribe(&self, ops: &[Op<'_>]) -> Result<(), PubSubError>;
     async fn publish(&self, msg: Event) -> Result<(), PubSubError>;
 }
 
-pub async fn pubsub_factory(conf: &PubSubConfig) -> Box<dyn PubSub + Send + Sync> {
-    match conf {
-        PubSubConfig::ValKeyConfig(conf) => Box::new(valkey::ValKeyPubSub::new(&conf).await),
+pub async fn pubsub_factory(
+    conf: &PubSubConfig,
+) -> Result<Box<dyn PubSub + Send + Sync>, PubSubError> {
+    let pubsub: Box<dyn PubSub + Send + Sync> = match conf {
+        PubSubConfig::ValKeyConfig(conf) => Box::new(valkey::ValKeyPubSub::new(&conf).await?),
         PubSubConfig::DummyConfig(_) => Box::new(dummy::DummyPubSub::new()),
-    }
+    };
+
+    Ok(pubsub)
 }

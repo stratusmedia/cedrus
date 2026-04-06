@@ -46,21 +46,25 @@ impl AppState {
 // The kinds of errors we can hit in our application.
 #[derive(Debug)]
 pub enum AppError {
-    BadRequest,   // 400
-    Unauthorized, // 401
-    Forbidden,    // 403
-    NotFound,     // 404
+    BadRequest,          // 400
+    Unauthorized,        // 401
+    Forbidden,           // 403
+    NotFound,            // 404
+    InternalServerError, // 500
 
     JsonRejection(JsonRejection), // 422
     CedrusError(cedrus_core::CedrusError),
 
     SchemaError(cedar_policy::SchemaError),
+    CedarSchemaError(cedar_policy::CedarSchemaError),
+    ToCedarSchemaError(cedar_policy::ToCedarSchemaError),
     EntitiesError(cedar_policy::entities_errors::EntitiesError),
     PolicyParseError(cedar_policy::ParseErrors),
     PolicyFromJsonError(cedar_policy::PolicyFromJsonError),
     PolicyToJsonError(cedar_policy::PolicyToJsonError),
     PolicySetError(cedar_policy::PolicySetError),
     ContextJsonError(cedar_policy::ContextJsonError),
+    SerdeJsonError(serde_json::Error),
 }
 
 // Tell axum how `AppError` should be converted into a response.
@@ -105,6 +109,13 @@ impl IntoResponse for AppError {
                     ..Default::default()
                 },
             ),
+            AppError::InternalServerError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ErrorResponse {
+                    message: "Internal Server Error".to_owned(),
+                    ..Default::default()
+                },
+            ),
             AppError::JsonRejection(rejection) => {
                 // This error is caused by bad user input so don't log it
                 (
@@ -138,7 +149,7 @@ impl IntoResponse for AppError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 ErrorResponse {
                     message: "Entities Error".to_owned(),
-                    detail: format!("{:?}", e.source().unwrap()),
+                    detail: format!("{}", e.source().unwrap()),
                     ..Default::default()
                 },
             ),
@@ -146,7 +157,23 @@ impl IntoResponse for AppError {
                 StatusCode::BAD_REQUEST,
                 ErrorResponse {
                     message: "Schema Error".to_owned(),
-                    detail: format!("{:?}", e.source().unwrap()),
+                    detail: format!("{}", e.source().unwrap()),
+                    ..Default::default()
+                },
+            ),
+            AppError::CedarSchemaError(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ErrorResponse {
+                    message: "CedarSchema Error".to_owned(),
+                    detail: format!("{}", e.source().unwrap()),
+                    ..Default::default()
+                },
+            ),
+            AppError::ToCedarSchemaError(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ErrorResponse {
+                    message: "ToCedarSchema Error".to_owned(),
+                    detail: format!("{}", e.source().unwrap()),
                     ..Default::default()
                 },
             ),
@@ -165,13 +192,12 @@ impl IntoResponse for AppError {
                 StatusCode::BAD_REQUEST,
                 ErrorResponse {
                     message: "PolicyFromJson Error".to_owned(),
-                    detail: format!("{:?}", e.source().unwrap()),
+                    detail: format!("{}", e.source().unwrap()),
                     ..Default::default()
                 },
             ),
             AppError::PolicyToJsonError(e) => {
                 let detail = e.to_string();
-                println!("PolicyToJson Error: {}", detail);
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     ErrorResponse {
@@ -185,7 +211,7 @@ impl IntoResponse for AppError {
                 StatusCode::BAD_REQUEST,
                 ErrorResponse {
                     message: "PolicySet Error".to_owned(),
-                    detail: format!("{:?}", e.source().unwrap()),
+                    detail: format!("{}", e.source().unwrap()),
                     ..Default::default()
                 },
             ),
@@ -193,7 +219,15 @@ impl IntoResponse for AppError {
                 StatusCode::BAD_REQUEST,
                 ErrorResponse {
                     message: "ContextJson Error".to_owned(),
-                    detail: format!("{:?}", e.source().unwrap()),
+                    detail: format!("{}", e.source().unwrap()),
+                    ..Default::default()
+                },
+            ),
+            AppError::SerdeJsonError(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ErrorResponse {
+                    message: "SerdeJson Error".to_owned(),
+                    detail: format!("{}", e.source().unwrap()),
                     ..Default::default()
                 },
             ),

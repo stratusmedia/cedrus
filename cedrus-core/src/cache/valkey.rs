@@ -121,29 +121,30 @@ pub struct ValKeyCache {
 }
 
 impl ValKeyCache {
-    pub async fn new(conf: &core::ValKeyCacheConfig) -> Self {
+    pub async fn new(conf: &core::ValKeyCacheConfig) -> Result<Self, CacheError> {
         let conn = if conf.cluster {
-            let client = redis::cluster::ClusterClient::new(conf.urls.clone()).unwrap();
+            let client = redis::cluster::ClusterClient::new(conf.urls.clone())
+                .map_err(|_e| CacheError::Connection)?;
             let config = redis::cluster::ClusterConfig::new()
                 .set_connection_timeout(Duration::from_secs(300));
             let conn = client
                 .get_async_connection_with_config(config)
                 .await
-                .unwrap();
+                .map_err(|_e| CacheError::Connection)?;
             ConnectionType::Cluster(conn)
         } else {
-            let url = conf.urls.get(0).unwrap();
-            let client = redis::Client::open(url.clone()).unwrap();
+            let url = conf.urls.get(0).ok_or(CacheError::Connection)?;
+            let client = redis::Client::open(url.clone()).map_err(|_e| CacheError::Connection)?;
             let config = redis::AsyncConnectionConfig::new()
                 .set_connection_timeout(Some(Duration::from_secs(300)));
             let conn = client
                 .get_multiplexed_async_connection_with_config(&config)
                 .await
-                .unwrap();
+                .map_err(|_e| CacheError::Connection)?;
             ConnectionType::Multiplexed(conn)
         };
 
-        Self { conn }
+        Ok(Self { conn })
     }
 
     fn project_identity_source_key(&self, project_id: &Uuid) -> String {
@@ -194,11 +195,14 @@ impl ValKeyCache {
         BASE64_STANDARD.encode(proto.encode_to_vec())
     }
 
-    fn entity_from_val(&self, val: String) -> Entity {
-        let buf = BASE64_STANDARD.decode(val).unwrap();
-        let proto = proto::Entity::decode(&*buf).unwrap();
+    fn entity_from_val(&self, val: String) -> Result<Entity, CacheError> {
+        let buf = BASE64_STANDARD
+            .decode(val)
+            .map_err(|e| CacheError::DecodeError(e.to_string()))?;
+        let proto =
+            proto::Entity::decode(&*buf).map_err(|e| CacheError::DecodeError(e.to_string()))?;
         let entity: Entity = proto.into();
-        entity
+        Ok(entity)
     }
 
     async fn keys_from_pattern(&self, pattern: &str) -> Result<Vec<String>, CacheError> {
@@ -231,7 +235,8 @@ impl Cache for ValKeyCache {
         let vals = self.conn.mget(&keys).await?;
         for val in vals {
             if let Some(val) = val {
-                let project = serde_json::from_str(&val).unwrap();
+                let project =
+                    serde_json::from_str(&val).map_err(|e| CacheError::JsonError(e.to_string()))?;
                 projects.push(project);
             }
         }
@@ -243,7 +248,9 @@ impl Cache for ValKeyCache {
         let key = self.project_key(project_id);
         let val = self.conn.get(&key).await?;
         let project: Option<Project> = match val {
-            Some(val) => Some(serde_json::from_str(&val).unwrap()),
+            Some(val) => {
+                Some(serde_json::from_str(&val).map_err(|e| CacheError::JsonError(e.to_string()))?)
+            }
             None => None,
         };
 
@@ -252,7 +259,8 @@ impl Cache for ValKeyCache {
 
     async fn project_set(&self, project: &Project) -> Result<(), CacheError> {
         let key = self.project_key(&project.id);
-        let val = serde_json::to_string(project).unwrap();
+        let val =
+            serde_json::to_string(project).map_err(|e| CacheError::JsonError(e.to_string()))?;
         let _: () = self.conn.set(&key, &val).await?;
 
         Ok(())
@@ -284,7 +292,9 @@ impl Cache for ValKeyCache {
         let key = self.project_identity_source_key(project_id);
         let val = self.conn.get(&key).await?;
         let identity_source: Option<IdentitySource> = match val {
-            Some(val) => Some(serde_json::from_str(&val).unwrap()),
+            Some(val) => {
+                Some(serde_json::from_str(&val).map_err(|e| CacheError::JsonError(e.to_string()))?)
+            }
             None => None,
         };
 
@@ -297,7 +307,8 @@ impl Cache for ValKeyCache {
         identity_source: &IdentitySource,
     ) -> Result<(), CacheError> {
         let key = self.project_identity_source_key(project_id);
-        let val = serde_json::to_string(identity_source).unwrap();
+        let val = serde_json::to_string(identity_source)
+            .map_err(|e| CacheError::JsonError(e.to_string()))?;
         let _: () = self.conn.set(&key, &val).await?;
 
         Ok(())
@@ -316,7 +327,9 @@ impl Cache for ValKeyCache {
         let key = self.project_schema_key(project_id);
         let val = self.conn.get(&key).await?;
         let schema: Option<Schema> = match val {
-            Some(val) => Some(serde_json::from_str(&val).unwrap()),
+            Some(val) => {
+                Some(serde_json::from_str(&val).map_err(|e| CacheError::JsonError(e.to_string()))?)
+            }
             None => None,
         };
 
@@ -329,7 +342,8 @@ impl Cache for ValKeyCache {
         schema: &Schema,
     ) -> Result<(), CacheError> {
         let key = self.project_schema_key(project_id);
-        let val = serde_json::to_string(schema).unwrap();
+        let val =
+            serde_json::to_string(schema).map_err(|e| CacheError::JsonError(e.to_string()))?;
         let _: () = self.conn.set(&key, &val).await?;
 
         Ok(())
@@ -369,7 +383,7 @@ impl Cache for ValKeyCache {
         let vals = self.conn.mget(&keys).await?;
         for val in vals {
             if let Some(val) = val {
-                let entity = self.entity_from_val(val);
+                let entity = self.entity_from_val(val)?;
                 entities.push(entity);
             }
         }
@@ -435,9 +449,12 @@ impl Cache for ValKeyCache {
         let vals = self.conn.mget(&keys).await?;
         for (i, val) in vals.iter().enumerate() {
             if let Some(val) = val {
-                let policy_id = PolicyId::from(keys[i].split(':').last().unwrap().to_string());
-                let policy: Policy = serde_json::from_str(&val).unwrap();
-                policies.insert(policy_id, policy);
+                if let Some(policy_id_str) = keys[i].split(':').last() {
+                    let policy_id = PolicyId::from(policy_id_str.to_string());
+                    let policy: Policy = serde_json::from_str(&val)
+                        .map_err(|e| CacheError::JsonError(e.to_string()))?;
+                    policies.insert(policy_id, policy);
+                }
             }
         }
 
@@ -451,7 +468,8 @@ impl Cache for ValKeyCache {
         let mut map = HashMap::new();
         for (policy_id, policy) in policies {
             let key = self.policies_key(project_id, policy_id);
-            let val = serde_json::to_string(policy).unwrap();
+            let val =
+                serde_json::to_string(policy).map_err(|e| CacheError::JsonError(e.to_string()))?;
             map.insert(key, val);
         }
 
@@ -499,9 +517,12 @@ impl Cache for ValKeyCache {
         let vals = self.conn.mget(&keys).await?;
         for (i, val) in vals.iter().enumerate() {
             if let Some(val) = val {
-                let policy_id = PolicyId::from(keys[i].split(':').last().unwrap().to_string());
-                let template: Template = serde_json::from_str(&val).unwrap();
-                templates.insert(policy_id, template);
+                if let Some(policy_id_str) = keys[i].split(':').last() {
+                    let policy_id = PolicyId::from(policy_id_str.to_string());
+                    let template: Template = serde_json::from_str(&val)
+                        .map_err(|e| CacheError::JsonError(e.to_string()))?;
+                    templates.insert(policy_id, template);
+                }
             }
         }
 
@@ -515,7 +536,8 @@ impl Cache for ValKeyCache {
         let mut map = HashMap::new();
         for (policy_id, template) in templates {
             let key = self.templates_key(project_id, policy_id);
-            let val = serde_json::to_string(template).unwrap();
+            let val = serde_json::to_string(template)
+                .map_err(|e| CacheError::JsonError(e.to_string()))?;
             map.insert(key, val);
         }
 
@@ -564,7 +586,8 @@ impl Cache for ValKeyCache {
         let vals = self.conn.mget(&keys).await?;
         for val in vals {
             if let Some(val) = val {
-                let template_link: TemplateLink = serde_json::from_str(&val).unwrap();
+                let template_link: TemplateLink =
+                    serde_json::from_str(&val).map_err(|e| CacheError::JsonError(e.to_string()))?;
                 template_links.push(template_link);
             }
         }
@@ -579,7 +602,8 @@ impl Cache for ValKeyCache {
         let mut map = HashMap::new();
         for template_link in template_links {
             let key = self.template_links_key(project_id, &template_link.new_id);
-            let val = serde_json::to_string(template_link).unwrap();
+            let val = serde_json::to_string(template_link)
+                .map_err(|e| CacheError::JsonError(e.to_string()))?;
             map.insert(key, val);
         }
 

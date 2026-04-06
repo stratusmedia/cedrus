@@ -18,7 +18,9 @@ use crate::{
 
 use super::{CedrusConfig, IdentitySource, is::Configuration, project::Project};
 
-pub async fn authorizer_factory(conf: &Configuration) -> jwt_authorizer::Authorizer<Value> {
+pub async fn authorizer_factory(
+    conf: &Configuration,
+) -> Result<jwt_authorizer::Authorizer<Value>, CedrusError> {
     match conf {
         Configuration::CognitoUserPoolConfiguration(conf) => {
             let url = conf.url_keys();
@@ -28,7 +30,7 @@ pub async fn authorizer_factory(conf: &Configuration) -> jwt_authorizer::Authori
                 .validation(validation)
                 .build()
                 .await
-                .unwrap()
+                .map_err(|e| CedrusError::AuthorizerError(e.to_string()))
         }
         Configuration::OpenIdConnectConfiguration(conf) => {
             let validation = match &conf.token_selection {
@@ -43,7 +45,7 @@ pub async fn authorizer_factory(conf: &Configuration) -> jwt_authorizer::Authori
                 .validation(validation)
                 .build()
                 .await
-                .unwrap()
+                .map_err(|e| CedrusError::AuthorizerError(e.to_string()))
         }
     }
 }
@@ -95,10 +97,9 @@ impl Cedrus {
             let entities_str = include_str!("../../config/cedrus.cedarentities.json");
             let policy_set_str = include_str!("../../config/cedrus.cedar.json");
 
-            let schema: Schema = serde_json::from_str(schema_str).expect("Unable to parse file");
-            let entities: Vec<Entity> =
-                serde_json::from_str(entities_str).expect("Unable to parse file");
-            let policy_set: PolicySet = serde_json::from_str(policy_set_str).unwrap();
+            let schema: Schema = serde_json::from_str(schema_str)?;
+            let entities: Vec<Entity> = serde_json::from_str(entities_str)?;
+            let policy_set: PolicySet = serde_json::from_str(policy_set_str)?;
 
             let now = chrono::Utc::now();
             let owner = EntityUid::new("Cedrus::User".to_string(), Uuid::nil().to_string());
@@ -199,14 +200,14 @@ impl Cedrus {
     }
 
     pub async fn reload_all(&self) -> Result<(), CedrusError> {
-        let projects = self.cache.projects_get().await.unwrap();
+        let projects = self.cache.projects_get().await?;
         for project in projects {
             self.api_keys
                 .insert(project.api_key.clone(), project.owner.clone());
 
             let cache_identity_source = self.cache.project_get_identity_source(&project.id).await?;
             if let Some(identity_source) = cache_identity_source {
-                let jwt = authorizer_factory(&identity_source.configuration).await;
+                let jwt = authorizer_factory(&identity_source.configuration).await?;
                 let authorizer = Authorizer::new(identity_source, jwt);
                 self.project_authorizers
                     .insert(project.id, Some(authorizer));
@@ -254,7 +255,10 @@ impl Cedrus {
         project_id: &Uuid,
         entities: &[Entity],
     ) -> Result<(), CedrusError> {
-        let project_cedar_entities = self.project_cedar_entities.get_mut(project_id).unwrap();
+        let project_cedar_entities = self
+            .project_cedar_entities
+            .get_mut(project_id)
+            .ok_or(CedrusError::NotFound)?;
 
         for entity in entities {
             let entity_uid = entity.uid().clone();
@@ -392,7 +396,9 @@ impl Cedrus {
         entity_uid: &EntityUid,
         entities: &mut HashMap<EntityUid, cedar_policy::Entity>,
     ) {
-        let list = self.project_cedar_entities.get(project_id).unwrap();
+        let Some(list) = self.project_cedar_entities.get(project_id) else {
+            return;
+        };
         let Some(value) = list.get(entity_uid) else {
             return;
         };
@@ -422,31 +428,35 @@ impl Cedrus {
     }
 
     pub fn is_allow(&self, principal: EntityUid, action: EntityUid, resource: EntityUid) -> bool {
-        let start = std::time::Instant::now();
-
         let entity_uids = HashSet::from([principal.clone(), resource.clone()]);
-        let cedar_entities = self.get_cedar_entities(&Uuid::nil(), &entity_uids).unwrap();
+
+        let Ok(cedar_entities) = self.get_cedar_entities(&Uuid::nil(), &entity_uids) else {
+            return false;
+        };
 
         let cedar_principal: cedar_policy::EntityUid = principal.into();
         let cedar_action: cedar_policy::EntityUid = action.into();
         let cedar_resource: cedar_policy::EntityUid = resource.into();
 
-        let cedar_request = cedar_policy::Request::new(
+        let cedar_request_result = cedar_policy::Request::new(
             cedar_principal,
             cedar_action,
             cedar_resource,
             cedar_policy::Context::empty(),
             None,
-        )
-        .unwrap();
+        );
+
+        let Ok(cedar_request) = cedar_request_result else {
+            return false;
+        };
 
         let authorizer = cedar_policy::Authorizer::new();
         let decision = {
-            let cedar_policies = self.project_cedar_policies.get(&Uuid::nil()).unwrap();
+            let Some(cedar_policies) = self.project_cedar_policies.get(&Uuid::nil()) else {
+                return false;
+            };
             authorizer.is_authorized(&cedar_request, &cedar_policies, &cedar_entities)
         };
-
-        println!("is_allow: {:?}", start.elapsed());
 
         match decision.decision() {
             cedar_policy::Decision::Allow => true,
@@ -462,17 +472,18 @@ impl Cedrus {
         resource: EntityUid,
         context: Option<Context>,
     ) -> Result<Response, CedrusError> {
-        //let start = std::time::Instant::now();
         let entity_uids = HashSet::from([principal.clone(), resource.clone()]);
-        let cedar_entities = self.get_cedar_entities(project_id, &entity_uids).unwrap();
-        //println!("[is_authorized] entities {:?}", start.elapsed());
+        let cedar_entities = self.get_cedar_entities(project_id, &entity_uids)?;
 
         let cedar_request = {
             let cedar_principal = principal.into();
             let cedar_action = action.into();
             let cedar_resource = resource.into();
 
-            let cedar_schema = { self.project_cedar_schemas.get(project_id).unwrap() };
+            let cedar_schema = self
+                .project_cedar_schemas
+                .get(project_id)
+                .ok_or(CedrusError::NotFound)?;
 
             let cedar_context = match context {
                 Some(value) => {
@@ -484,7 +495,6 @@ impl Cedrus {
                 }
                 _ => cedar_policy::Context::empty(),
             };
-            //println!("[is_authorized] cedar_context {:?}", start.elapsed());
 
             cedar_policy::Request::new(
                 cedar_principal,
@@ -492,19 +502,17 @@ impl Cedrus {
                 cedar_resource,
                 cedar_context,
                 cedar_schema.as_ref(),
-            )
-            .unwrap()
+            )?
         };
-        //println!("[is_authorized] cedar_request {:?}", start.elapsed());
 
         let authorizer = cedar_policy::Authorizer::new();
-        //println!("[is_authorized] authorizer {:?}", start.elapsed());
         let answer = {
-            let cedar_policies = self.project_cedar_policies.get(project_id).unwrap();
-            //println!("[is_authorized] cedar_policies {:?}", start.elapsed());
+            let cedar_policies = self
+                .project_cedar_policies
+                .get(project_id)
+                .ok_or(CedrusError::NotFound)?;
             authorizer.is_authorized(&cedar_request, &cedar_policies, &cedar_entities)
         };
-        //println!("[is_authorized] answer {:?}", start.elapsed());
 
         Ok(answer.into())
     }
@@ -514,7 +522,11 @@ impl Cedrus {
         project_id: &Uuid,
         requests: Vec<Request>,
     ) -> Result<Vec<Response>, CedrusError> {
-        //let start = std::time::Instant::now();
+        let cedar_schema = self
+            .project_cedar_schemas
+            .get(project_id)
+            .ok_or(CedrusError::NotFound)?;
+
         let mut answers = Vec::new();
 
         let mut entity_uids = HashSet::new();
@@ -522,10 +534,8 @@ impl Cedrus {
             entity_uids.insert(request.principal.clone());
             entity_uids.insert(request.resource.clone());
         }
-        let cedar_entities = self.get_cedar_entities(project_id, &entity_uids).unwrap();
-        //println!("[is_authorized] entities {:?}", start.elapsed());
 
-        let cedar_schema = { self.project_cedar_schemas.get(project_id).unwrap() };
+        let cedar_entities = self.get_cedar_entities(project_id, &entity_uids)?;
 
         for request in requests {
             let cedar_request = {
@@ -550,65 +560,21 @@ impl Cedrus {
                     cedar_resource,
                     cedar_context,
                     cedar_schema.as_ref(),
-                )
-                .unwrap()
+                )?
             };
 
-            //println!("is_authorized0: {:?}", start.elapsed());
             let authorizer = cedar_policy::Authorizer::new();
             let answer = {
-                let cedar_policies = self.project_cedar_policies.get(project_id).unwrap();
+                let cedar_policies = self
+                    .project_cedar_policies
+                    .get(project_id)
+                    .ok_or(CedrusError::NotFound)?;
                 authorizer.is_authorized(&cedar_request, &cedar_policies, &cedar_entities)
             };
-            //println!("is_authorized4: {:?}", start.elapsed());
             answers.push(answer.into());
         }
 
-        //println!("is_authorized4: {:?}", start.elapsed());
-
         Ok(answers)
-    }
-
-    pub fn is_authorized_batch_from_resources(
-        &self,
-        project_id: &Uuid,
-        principal: EntityUid,
-        action: EntityUid,
-        resources: Vec<EntityUid>,
-    ) -> Vec<bool> {
-        let mut decisions = Vec::new();
-
-        let cedar_principal: cedar_policy::EntityUid = principal.clone().into();
-        let action: cedar_policy::EntityUid = action.into();
-
-        let cedar_schema = { self.project_cedar_schemas.get(project_id).unwrap().clone() };
-
-        for resource in resources {
-            let entity_uids = HashSet::from([principal.clone(), resource.clone()]);
-            let request = cedar_policy::Request::new(
-                cedar_principal.clone(),
-                action.clone(),
-                resource.into(),
-                cedar_policy::Context::empty(),
-                cedar_schema.as_ref(),
-            )
-            .unwrap();
-
-            let authorizer = cedar_policy::Authorizer::new();
-            let decision = {
-                let cedar_entities = self.get_cedar_entities(project_id, &entity_uids).unwrap();
-                let cedar_policies = self.project_cedar_policies.get(project_id).unwrap();
-                authorizer.is_authorized(&request, &cedar_policies, &cedar_entities)
-            };
-
-            if decision.decision() == cedar_policy::Decision::Allow {
-                decisions.push(true);
-            } else {
-                decisions.push(false);
-            }
-        }
-
-        decisions
     }
 
     pub async fn projects_find(&self, query: Query) -> Result<PageList<Project>, CedrusError> {
@@ -1148,13 +1114,16 @@ impl Cedrus {
         if !intern && event.sender == self.id {
             return;
         }
-        println!("update {:?}", event);
         match event.msg() {
             EventType::ReloadAll => {
-                self.reload_all().await.unwrap();
+                let _ = self.reload_all().await;
             }
             EventType::ProjectCreate(id) => {
-                if let Some(project) = self.cache.project_get(id).await.unwrap() {
+                let Ok(project_cache) = self.cache.project_get(id).await else {
+                    return;
+                };
+
+                if let Some(project) = project_cache {
                     self.project_cedar_schemas.insert(*id, None);
                     self.project_cedar_policies
                         .insert(*id, cedar_policy::PolicySet::new());
@@ -1165,7 +1134,11 @@ impl Cedrus {
                 }
             }
             EventType::ProjectUpdate(id) => {
-                if let Some(project) = self.cache.project_get(id).await.unwrap() {
+                let Ok(project_cache) = self.cache.project_get(id).await else {
+                    return;
+                };
+
+                if let Some(project) = project_cache {
                     self.api_keys
                         .insert(project.api_key.clone(), project.owner.clone());
                 }
@@ -1178,10 +1151,14 @@ impl Cedrus {
                 self.project_cedar_policies.remove(id);
             }
             EventType::ProjectPutIdentitySource(id) => {
-                let cache_identity_source =
-                    self.cache.project_get_identity_source(id).await.unwrap();
-                if let Some(identity_source) = cache_identity_source {
-                    let jwt = authorizer_factory(&identity_source.configuration).await;
+                let Ok(is_cache) = self.cache.project_get_identity_source(id).await else {
+                    return;
+                };
+
+                if let Some(identity_source) = is_cache {
+                    let Ok(jwt) = authorizer_factory(&identity_source.configuration).await else {
+                        return;
+                    };
                     let authorizer = Authorizer::new(identity_source, jwt);
                     self.project_authorizers.insert(*id, Some(authorizer));
                 } else {
@@ -1192,11 +1169,20 @@ impl Cedrus {
                 self.project_authorizers.insert(*id, None);
             }
             EventType::ProjectPutSchema(id) => {
-                let cache_schema = self.cache.project_get_schema(id).await.unwrap();
-                let cedar_schema: Option<cedar_policy::Schema> =
-                    cache_schema.map(|s| s.try_into()).transpose().unwrap();
-
-                self.project_cedar_schemas.insert(*id, cedar_schema);
+                let Ok(schema_cache) = self.cache.project_get_schema(id).await else {
+                    return;
+                };
+                match schema_cache {
+                    Some(schema) => {
+                        let Ok(cedar_schema) = schema.try_into() else {
+                            return;
+                        };
+                        self.project_cedar_schemas.insert(*id, Some(cedar_schema));
+                    }
+                    None => {
+                        self.project_cedar_schemas.insert(*id, None);
+                    }
+                }
             }
             EventType::ProjectRemoveSchema(id) => {
                 self.project_cedar_schemas.insert(*id, None);
@@ -1206,30 +1192,29 @@ impl Cedrus {
                     .cache
                     .project_get_entities(&id, &Vec::from_iter(entity_uids.clone()))
                     .await
-                    .unwrap();
-                self.project_add_entities(id, &cache_entities).unwrap();
+                    .unwrap_or_default();
+                let _ = self.project_add_entities(id, &cache_entities);
             }
             EventType::ProjectRemoveEntities(id, entity_uids) => {
-                self.project_remove_entities(id, &Vec::from_iter(entity_uids.clone()))
-                    .unwrap();
+                let _ = self.project_remove_entities(id, &Vec::from_iter(entity_uids.clone()));
             }
             EventType::ProjectAddPolicies(id, _policy_ids) => {
-                self.project_set_policy_set(&id).await.unwrap();
+                let _ = self.project_set_policy_set(&id).await;
             }
             EventType::ProjectRemovePolicies(id, _policy_ids) => {
-                self.project_set_policy_set(&id).await.unwrap();
+                let _ = self.project_set_policy_set(&id).await;
             }
             EventType::ProjectAddTemplates(id, _template_ids) => {
-                self.project_set_policy_set(&id).await.unwrap();
+                let _ = self.project_set_policy_set(&id).await;
             }
             EventType::ProjectRemoveTemplates(id, _template_ids) => {
-                self.project_set_policy_set(&id).await.unwrap();
+                let _ = self.project_set_policy_set(&id).await;
             }
             EventType::ProjectAddTemplateLinks(id, _template_link_ids) => {
-                self.project_set_policy_set(&id).await.unwrap();
+                let _ = self.project_set_policy_set(&id).await;
             }
             EventType::ProjectRemoveTemplateLinks(id, _template_link_ids) => {
-                self.project_set_policy_set(&id).await.unwrap();
+                let _ = self.project_set_policy_set(&id).await;
             }
         }
     }

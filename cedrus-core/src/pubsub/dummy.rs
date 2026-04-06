@@ -12,7 +12,9 @@ impl DummyPubSub {
 
 #[async_trait::async_trait]
 impl PubSub for DummyPubSub {
-    async fn subscribe(&self, _ops: &[Op<'_>]) {}
+    async fn subscribe(&self, _ops: &[Op<'_>]) -> Result<(), PubSubError> {
+        Ok(())
+    }
 
     async fn publish(&self, _msg: Event) -> Result<(), PubSubError> {
         Ok(())

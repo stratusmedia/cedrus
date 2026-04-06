@@ -42,15 +42,15 @@ pub async fn authorize(
     mut req: Request,
     next: Next,
 ) -> Result<Response<Body>, AuthError> {
-    if let Some(api_key) = req.headers().get(X_API_KEY) {
-        let principal = state.cedrus.api_keys.get(api_key.to_str().unwrap());
-        let Some(principal) = principal else {
-            return Err(AuthError {
-                message: "Unauthorized".to_string(),
-                status_code: StatusCode::UNAUTHORIZED,
-            });
-        };
-
+    if let Some(header_api_key) = req.headers().get(X_API_KEY) {
+        let api_key = header_api_key.to_str().map_err(|_| AuthError {
+            message: "Unauthorized".to_string(),
+            status_code: StatusCode::UNAUTHORIZED,
+        })?;
+        let principal = state.cedrus.api_keys.get(api_key).ok_or(AuthError {
+            message: "Unauthorized".to_string(),
+            status_code: StatusCode::UNAUTHORIZED,
+        })?;
         req.extensions_mut().insert(principal.value().clone());
     } else {
         let Some(token) = stract_token(req.headers()) else {
@@ -76,7 +76,10 @@ pub async fn authorize(
                     });
                 };
 
-                let authorizer = authorizer.as_ref().unwrap();
+                let authorizer = authorizer.as_ref().ok_or(AuthError {
+                    message: "Unauthorized".to_string(),
+                    status_code: StatusCode::UNAUTHORIZED,
+                })?;
 
                 let token_data = match authorizer.jwt.check_auth(&token).await {
                     Ok(token_data) => token_data,
@@ -89,14 +92,27 @@ pub async fn authorize(
                     }
                 };
 
-                let entity = authorizer.get_entity(token_data.claims).unwrap();
-                let cedar_entity: cedar_policy::Entity = entity.to_cedar_entity(None).unwrap();
+                let entity = authorizer
+                    .get_entity(token_data.claims)
+                    .map_err(|_e| AuthError {
+                        message: "Unauthorized".to_string(),
+                        status_code: StatusCode::UNAUTHORIZED,
+                    })?;
+
+                let cedar_entity: cedar_policy::Entity =
+                    entity.to_cedar_entity(None).map_err(|_e| AuthError {
+                        message: "Unauthorized".to_string(),
+                        status_code: StatusCode::UNAUTHORIZED,
+                    })?;
 
                 let entities = state
                     .cedrus
                     .project_cedar_entities
                     .get(&Uuid::nil())
-                    .unwrap();
+                    .ok_or(AuthError {
+                        message: "Unauthorized".to_string(),
+                        status_code: StatusCode::UNAUTHORIZED,
+                    })?;
                 entities.insert(entity.uid().clone(), (entity.clone(), cedar_entity));
 
                 req.extensions_mut().insert(entity.uid().clone());

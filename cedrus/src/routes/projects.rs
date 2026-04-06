@@ -402,9 +402,9 @@ async fn projects_id_schema_cedar_get(
     let schema = state.cedrus.project_schema_find(id).await?;
     let schema = match schema {
         Some(schema) => {
-            let value = serde_json::to_value(&schema).unwrap();
-            let cedar_schema = cedar_policy::SchemaFragment::from_json_value(value).unwrap();
-            let schema = cedar_schema.to_cedarschema().unwrap();
+            let value = serde_json::to_value(&schema).map_err(|e| AppError::SerdeJsonError(e))?;
+            let cedar_schema = cedar_policy::SchemaFragment::from_json_value(value).map_err(|e| AppError::SchemaError(e))?;
+            let schema = cedar_schema.to_cedarschema().map_err(|e| AppError::ToCedarSchemaError(e))?;
             CedarSyntax { cedar: Some(schema) }
         },
         None => return Ok(AppJson(CedarSyntax { cedar: None})),
@@ -442,9 +442,9 @@ async fn projects_id_schema_cedar_put(
 
     let schema = match syntax.cedar {
         Some(str) => {
-            let (cedar_schema, _warnings) = cedar_policy::SchemaFragment::from_cedarschema_str(&str).unwrap();
-            let json = cedar_schema.to_json_value().unwrap();
-            let schema: Schema = serde_json::from_value(json).unwrap();
+            let (cedar_schema, _warnings) = cedar_policy::SchemaFragment::from_cedarschema_str(&str).map_err(|e| AppError::CedarSchemaError(e))?;
+            let json = cedar_schema.to_json_value().map_err(|e| AppError::SchemaError(e))?;
+            let schema: Schema = serde_json::from_value(json).map_err(|e| AppError::SerdeJsonError(e))?;
             schema
         },
         None => return Ok(()),
@@ -488,8 +488,8 @@ async fn projects_id_schema_validate_cedar_post(
 
     let (cedar_schema, _warnings) = cedar_policy::SchemaFragment::from_cedarschema_str(&str)
         .map_err(|_| AppError::BadRequest)?;
-    let json = cedar_schema.to_json_value().unwrap();
-    let schema: Schema = serde_json::from_value(json).unwrap();
+    let json = cedar_schema.to_json_value().map_err(|e| AppError::SchemaError(e))?;
+    let schema: Schema = serde_json::from_value(json).map_err(|e| AppError::SerdeJsonError(e))?;
 
     Ok(AppJson(schema))
 }
@@ -767,17 +767,14 @@ async fn projects_id_policies_policy_id_cedar_get(
         selector: Some(Selector::Record(map)),
         ..Default::default()
     };
+
     let items = state.cedrus.project_policies_find(id, query).await?.items;    
-    if items.is_empty() {
-        return Err(AppError::NotFound);
-    }
-
-    let (_, mut policy) = items.into_iter().next().unwrap();
+    let (_, mut policy) = items.into_iter().next().ok_or(AppError::NotFound)?;
     policy.annotations.insert("id".to_string(), Some(policy_id));
-    let json = serde_json::to_value(policy).unwrap();
-    let cedar_policy = cedar_policy::Policy::from_json(None, json).unwrap();
+    let json = serde_json::to_value(policy).map_err(|e| AppError::SerdeJsonError(e))?;
+    let cedar_policy = cedar_policy::Policy::from_json(None, json).map_err(|e| AppError::PolicyFromJsonError(e))?;
 
-    let cedar = cedar_policy.to_cedar().unwrap();
+    let cedar = cedar_policy.to_cedar().ok_or(AppError::InternalServerError)?;
 
     Ok(AppJson(CedarSyntax { cedar: Some(cedar) }))
 }
@@ -812,10 +809,14 @@ async fn projects_id_policies_policy_id_cedar_put(
         return Err(AppError::Forbidden);
     }
 
-    let cedar_policy_id = cedar_policy::PolicyId::new(policy_id.clone());
-    let cedar_policy = cedar_policy::Policy::parse(Some(cedar_policy_id), syntax.cedar.unwrap()).unwrap();
+    let Some(cedar) = syntax.cedar else {
+        return Err(AppError::BadRequest);
+    };
 
-    let policy: Policy = cedar_policy.try_into().unwrap();
+    let cedar_policy_id = cedar_policy::PolicyId::new(policy_id.clone());
+    let cedar_policy = cedar_policy::Policy::parse(Some(cedar_policy_id), cedar)?;
+
+    let policy: Policy = cedar_policy.try_into()?;
 
     state.cedrus.project_policies_add(id, HashMap::from([(policy_id.into(), policy)])).await?;
 
@@ -1026,14 +1027,11 @@ async fn projects_id_templates_template_id_cedar_get(
         selector: Some(Selector::Record(map)),
         ..Default::default()
     };
-    let items = state.cedrus.project_templates_find(id, query).await?.items;    
-    if items.is_empty() {
-        return Err(AppError::NotFound);
-    }
 
-    let (_, template) = items.into_iter().next().unwrap();
-    let json = serde_json::to_value(template).unwrap();
-    let cedar_template = cedar_policy::Template::from_json(None, json).unwrap();
+    let items = state.cedrus.project_templates_find(id, query).await?.items;    
+    let (_, template) = items.into_iter().next().ok_or(AppError::NotFound)?;
+    let json = serde_json::to_value(template).map_err(|e| AppError::SerdeJsonError(e))?;
+    let cedar_template = cedar_policy::Template::from_json(None, json)?;
     let cedar = cedar_template.to_cedar();
 
     Ok(AppJson(CedarSyntax { cedar: Some(cedar) }))
@@ -1069,10 +1067,14 @@ async fn projects_id_templates_template_id_cedar_put(
         return Err(AppError::Forbidden);
     }
 
-    let cedar_template_id = cedar_policy::PolicyId::new(template_id.clone());
-    let cedar_template = cedar_policy::Template::parse(Some(cedar_template_id), syntax.cedar.unwrap()).unwrap();
+    let Some(cedar) = syntax.cedar else {
+        return Err(AppError::BadRequest);
+    };
 
-    let template: Template = cedar_template.try_into().unwrap();
+    let cedar_template_id = cedar_policy::PolicyId::new(template_id.clone());
+    let cedar_template = cedar_policy::Template::parse(Some(cedar_template_id), cedar)?;
+
+    let template: Template = cedar_template.try_into()?;
 
     state.cedrus.project_templates_add(id, HashMap::from([(template_id.into(), template)])).await?;
 
@@ -1215,14 +1217,11 @@ async fn projects_id_template_links_policy_id_cedar_get(
         selector: Some(Selector::Record(map)),
         ..Default::default()
     };
-    let items = state.cedrus.project_templates_find(id, query).await?.items;    
-    if items.is_empty() {
-        return Err(AppError::NotFound);
-    }
 
-    let (_, template) = items.into_iter().next().unwrap();
-    let json = serde_json::to_value(template).unwrap();
-    let cedar_template = cedar_policy::Template::from_json(None, json).unwrap();
+    let items = state.cedrus.project_templates_find(id, query).await?.items;    
+    let (_, template) = items.into_iter().next().ok_or(AppError::NotFound)?;
+    let json = serde_json::to_value(template).map_err(|e| AppError::SerdeJsonError(e))?;
+    let cedar_template = cedar_policy::Template::from_json(None, json)?;
     let cedar = cedar_template.to_cedar();
 
     Ok(AppJson(CedarSyntax { cedar: Some(cedar) }))
@@ -1258,10 +1257,14 @@ async fn projects_id_template_links_policy_id_cedar_put(
         return Err(AppError::Forbidden);
     }
 
-    let cedar_template_id = cedar_policy::PolicyId::new(template_id.clone());
-    let cedar_template = cedar_policy::Template::parse(Some(cedar_template_id), syntax.cedar.unwrap()).unwrap();
+    let Some(cedar) = syntax.cedar else {
+        return Err(AppError::BadRequest);
+    };
 
-    let template: Template = cedar_template.try_into().unwrap();
+    let cedar_template_id = cedar_policy::PolicyId::new(template_id.clone());
+    let cedar_template = cedar_policy::Template::parse(Some(cedar_template_id), cedar)?;
+
+    let template: Template = cedar_template.try_into()?;
 
     state.cedrus.project_templates_add(id, HashMap::from([(template_id.into(), template)])).await?;
 

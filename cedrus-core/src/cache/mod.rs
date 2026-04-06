@@ -6,16 +6,18 @@ use cedrus_cedar::{
 use redis::RedisError;
 use uuid::Uuid;
 
-use crate::core::{project::Project, IdentitySource};
+use crate::core::{IdentitySource, project::Project};
 
-pub mod valkey;
 pub mod dashmap;
+pub mod valkey;
 
 #[derive(Debug)]
 pub enum CacheError {
     Connection,
     NotFound,
-    RedisError(RedisError)
+    DecodeError(String),
+    JsonError(String),
+    RedisError(RedisError),
 }
 
 impl std::fmt::Display for CacheError {
@@ -23,6 +25,8 @@ impl std::fmt::Display for CacheError {
         match self {
             CacheError::Connection => write!(f, "Connection error"),
             CacheError::NotFound => write!(f, "Not found"),
+            CacheError::DecodeError(err) => write!(f, "Decode error: {}", err),
+            CacheError::JsonError(err) => write!(f, "Json error: {}", err),
             CacheError::RedisError(err) => write!(f, "Redis error: {}", err),
         }
     }
@@ -133,9 +137,14 @@ pub trait Cache: Send + Sync {
     ) -> Result<(), CacheError>;
 }
 
-pub async fn cache_factory(conf: &crate::core::CacheConfig) -> Box<dyn Cache + Send + Sync> {
-    match conf {
-        crate::core::CacheConfig::ValKeyConfig(conf) => Box::new(valkey::ValKeyCache::new(&conf).await),
+pub async fn cache_factory(
+    conf: &crate::core::CacheConfig,
+) -> Result<Box<dyn Cache + Send + Sync>, CacheError> {
+    let cache: Box<dyn Cache + Send + Sync> = match conf {
+        crate::core::CacheConfig::ValKeyConfig(conf) => {
+            Box::new(valkey::ValKeyCache::new(&conf).await?)
+        }
         crate::core::CacheConfig::DashMapConfig(_) => Box::new(dashmap::DashMapCache::new()),
-    }
+    };
+    Ok(cache)
 }

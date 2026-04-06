@@ -19,47 +19,56 @@ pub struct ValKeyPubSub {
 }
 
 impl ValKeyPubSub {
-    pub async fn new(conf: &ValKeyPubSubConfig) -> Self {
+    pub async fn new(conf: &ValKeyPubSubConfig) -> Result<Self, PubSubError> {
         let conn = if conf.cluster {
-            let client = redis::cluster::ClusterClient::new(conf.urls.clone()).unwrap();
-            let conn = client.get_async_connection().await.unwrap();
+            let client = redis::cluster::ClusterClient::new(conf.urls.clone())
+                .map_err(|_| PubSubError::Connection)?;
+            let conn = client
+                .get_async_connection()
+                .await
+                .map_err(|_| PubSubError::Connection)?;
             ConnectionType::Cluster(conn)
         } else {
-            let url = conf.urls.get(0).unwrap();
-            let client = redis::Client::open(url.clone()).unwrap();
-            let conn = client.get_multiplexed_async_connection().await.unwrap();
+            let url = conf.urls.get(0).ok_or(PubSubError::Connection)?;
+            let client = redis::Client::open(url.clone()).map_err(|_| PubSubError::Connection)?;
+            let conn = client
+                .get_multiplexed_async_connection()
+                .await
+                .map_err(|_| PubSubError::Connection)?;
             ConnectionType::Multiplexed(conn)
         };
 
         let topic = conf.channel_name.clone();
 
-        Self {
+        Ok(Self {
             conn,
             urls: conf.urls.clone(),
             topic,
-        }
+        })
     }
 }
 
 #[async_trait::async_trait]
 impl PubSub for ValKeyPubSub {
-    async fn subscribe(&self, ops: &[Op<'_>]) {
+    async fn subscribe(&self, ops: &[Op<'_>]) -> Result<(), PubSubError> {
         match &self.conn {
             ConnectionType::Multiplexed(_) => {
                 let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
-                let url = self.urls.get(0).unwrap();
+                let url = self.urls.get(0).ok_or(PubSubError::Connection)?;
                 let config = redis::AsyncConnectionConfig::new().set_push_sender(tx);
-                let client = redis::Client::open(url.clone()).unwrap();
+                let client =
+                    redis::Client::open(url.clone()).map_err(|_| PubSubError::Connection)?;
                 let mut conn = client
                     .get_multiplexed_async_connection_with_config(&config)
                     .await
-                    .unwrap();
-                let _ = conn.subscribe(&[&self.topic]).await.unwrap();
-                println!("Multiplexed subscribe");
+                    .map_err(|_| PubSubError::Connection)?;
+                let _ = conn
+                    .subscribe(&[&self.topic])
+                    .await
+                    .map_err(|_| PubSubError::Connection)?;
 
                 while let Some(msg) = rx.recv().await {
-                    println!("subscribe1 recv {:?}", msg);
                     match msg.kind {
                         redis::PushKind::Message => {
                             let Some(message) = msg.data.get(1) else {
@@ -70,7 +79,6 @@ impl PubSub for ValKeyPubSub {
                                     let Ok(str) = String::from_utf8(data.clone()) else {
                                         continue;
                                     };
-                                    println!("subscribe2 recv1: {}", str);
                                     let Ok(message) = serde_json::from_str::<Event>(&str) else {
                                         continue;
                                     };
@@ -92,13 +100,17 @@ impl PubSub for ValKeyPubSub {
                     .use_protocol(redis::ProtocolVersion::RESP3)
                     .push_sender(tx)
                     .build()
-                    .unwrap();
-                let mut conn = client.get_async_connection().await.unwrap();
-                let _ = conn.subscribe(&[&self.topic]).await.unwrap();
-                println!("Cluster subscribe");
+                    .map_err(|_| PubSubError::Connection)?;
+                let mut conn = client
+                    .get_async_connection()
+                    .await
+                    .map_err(|_| PubSubError::Connection)?;
+                let _ = conn
+                    .subscribe(&[&self.topic])
+                    .await
+                    .map_err(|_| PubSubError::Connection)?;
 
                 while let Some(msg) = rx.recv().await {
-                    println!("subscribe1 recv {:?}", msg);
                     match msg.kind {
                         redis::PushKind::Message => {
                             let Some(message) = msg.data.get(1) else {
@@ -109,7 +121,6 @@ impl PubSub for ValKeyPubSub {
                                     let Ok(str) = String::from_utf8(data.clone()) else {
                                         continue;
                                     };
-                                    println!("subscribe2 recv1: {}", str);
                                     let Ok(message) = serde_json::from_str::<Event>(&str) else {
                                         continue;
                                     };
@@ -124,25 +135,25 @@ impl PubSub for ValKeyPubSub {
                     }
                 }
             }
-        }
+        };
+
+        Ok(())
     }
 
     async fn publish(&self, message: Event) -> Result<(), PubSubError> {
-        let msg = serde_json::to_string(&message).unwrap();
+        let msg = serde_json::to_string(&message).map_err(|_| PubSubError::Connection)?;
         match &self.conn {
             ConnectionType::Multiplexed(conn) => {
-                println!("publish Multiplexed: {} {}", self.topic, msg);
                 let mut conn = conn.clone();
                 conn.publish::<String, String, String>(self.topic.clone(), msg)
                     .await
-                    .unwrap();
+                    .map_err(|_| PubSubError::Publish)?;
             }
             ConnectionType::Cluster(conn) => {
-                println!("publish Cluster: {} {}", self.topic, msg);
                 let mut conn = conn.clone();
                 conn.publish::<String, String, String>(self.topic.clone(), msg)
                     .await
-                    .unwrap();
+                    .map_err(|_| PubSubError::Publish)?;
             }
         }
 

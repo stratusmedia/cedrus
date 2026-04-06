@@ -40,34 +40,41 @@ impl Authorizer {
         }
     }
 
-    pub fn get_entity(&self, token: Value) -> Option<Entity> {
+    pub fn get_entity(&self, token: Value) -> Result<Entity, CedrusError> {
         tracing::info!("get_entity: {}", token);
         let prefix = self.identity_source.prefix();
         let entity_type = self.identity_source.principal_entity_type.clone();
         let id_claim = self.identity_source.id_claim();
-        let sub = token.get(id_claim)?;
-        let id = format!("{}|{}", prefix, sub.as_str().unwrap());
+        let sub = token.get(id_claim).ok_or(CedrusError::Unauthorized)?;
+        let id = format!(
+            "{}|{}",
+            prefix,
+            sub.as_str().ok_or(CedrusError::Unauthorized)?
+        );
 
-        let parents: HashSet<EntityUid> = {
+        let parents: Result<HashSet<EntityUid>, CedrusError> = {
             if let Some(group_claim) = self.identity_source.group_claim() {
                 if let Some(group) = token.get(group_claim) {
-                    let group = group.as_array().unwrap();
-                    let group_entity_type =
-                        self.identity_source.group_entity_type().unwrap_or_default();
+                    let group = group.as_array().ok_or(CedrusError::Unauthorized)?;
+                    let group_entity_type = self
+                        .identity_source
+                        .group_entity_type()
+                        .ok_or(CedrusError::Unauthorized)?;
                     group
                         .iter()
                         .map(|v| {
-                            EntityUid::new(
+                            let group_id = v.as_str().ok_or(CedrusError::Unauthorized)?;
+                            Ok(EntityUid::new(
                                 group_entity_type.to_string(),
-                                format!("{}", v.as_str().unwrap()),
-                            )
+                                format!("{}", group_id),
+                            ))
                         })
-                        .collect::<HashSet<EntityUid>>()
+                        .collect::<Result<HashSet<EntityUid>, CedrusError>>()
                 } else {
-                    HashSet::new()
+                    Ok(HashSet::new())
                 }
             } else {
-                HashSet::new()
+                Ok(HashSet::new())
             }
         };
 
@@ -77,23 +84,26 @@ impl Authorizer {
                 "id": id
             },
             "attrs": token,
-            "parents": parents
+            "parents": parents?
         });
-        println!("Value: {}", serde_json::to_string_pretty(&value).unwrap());
 
-        let entity: Entity = serde_json::from_value(value).unwrap();
+        let entity: Entity =
+            serde_json::from_value(value).map_err(|_| CedrusError::Unauthorized)?;
 
-        println!("Entity {:?}", entity);
-
-        Some(entity)
+        Ok(entity)
     }
 }
 
-pub async fn authorizer_factory(conf: &Configuration) -> jwt_authorizer::Authorizer<Value> {
+pub async fn authorizer_factory(
+    conf: &Configuration,
+) -> Result<jwt_authorizer::Authorizer<Value>, CedrusError> {
     match conf {
         Configuration::CognitoUserPoolConfiguration(conf) => {
             let url = conf.url_keys();
-            JwtAuthorizer::from_jwks_url(&url).build().await.unwrap()
+            JwtAuthorizer::from_jwks_url(&url)
+                .build()
+                .await
+                .map_err(|_| CedrusError::Unauthorized)
         }
         Configuration::OpenIdConnectConfiguration(conf) => {
             let validation = match &conf.token_selection {
@@ -108,7 +118,7 @@ pub async fn authorizer_factory(conf: &Configuration) -> jwt_authorizer::Authori
                 .validation(validation)
                 .build()
                 .await
-                .unwrap()
+                .map_err(|_| CedrusError::Unauthorized)
         }
     }
 }
@@ -365,16 +375,19 @@ pub enum CedrusError {
     Forbidden,    // 403
     NotFound,     // 404
 
+    AuthorizerError(String),
     DatabaseError(DatabaseError),
     CacheError(CacheError),
     PubSubError(PubSubError),
 
+    SerdeJsonError(serde_json::Error),
     SchemaError(cedar_policy::SchemaError),
     EntitiesError(cedar_policy::entities_errors::EntitiesError),
     PolicyFromJsonError(cedar_policy::PolicyFromJsonError),
     PolicyToJsonError(cedar_policy::PolicyToJsonError),
     PolicySetError(cedar_policy::PolicySetError),
     ContextJsonError(cedar_policy::ContextJsonError),
+    RequestValidationError(cedar_policy::RequestValidationError),
 }
 
 impl Error for CedrusError {}
@@ -386,15 +399,18 @@ impl fmt::Display for CedrusError {
             CedrusError::Unauthorized => write!(f, "Unauthorized"),
             CedrusError::Forbidden => write!(f, "Forbidden"),
             CedrusError::NotFound => write!(f, "Not found"),
+            CedrusError::AuthorizerError(ref err) => err.fmt(f),
             CedrusError::DatabaseError(ref err) => err.fmt(f),
             CedrusError::CacheError(ref err) => err.fmt(f),
             CedrusError::PubSubError(ref err) => err.fmt(f),
+            CedrusError::SerdeJsonError(ref err) => err.fmt(f),
             CedrusError::SchemaError(ref err) => err.fmt(f),
             CedrusError::EntitiesError(ref err) => err.fmt(f),
             CedrusError::PolicyFromJsonError(ref err) => err.fmt(f),
             CedrusError::PolicyToJsonError(ref err) => err.fmt(f),
             CedrusError::PolicySetError(ref err) => err.fmt(f),
             CedrusError::ContextJsonError(ref err) => err.fmt(f),
+            CedrusError::RequestValidationError(ref err) => err.fmt(f),
         }
     }
 }
@@ -414,6 +430,12 @@ impl From<CacheError> for CedrusError {
 impl From<PubSubError> for CedrusError {
     fn from(error: PubSubError) -> Self {
         Self::PubSubError(error)
+    }
+}
+
+impl From<serde_json::Error> for CedrusError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::SerdeJsonError(error)
     }
 }
 
@@ -450,6 +472,12 @@ impl From<cedar_policy::PolicySetError> for CedrusError {
 impl From<cedar_policy::ContextJsonError> for CedrusError {
     fn from(error: cedar_policy::ContextJsonError) -> Self {
         Self::ContextJsonError(error)
+    }
+}
+
+impl From<cedar_policy::RequestValidationError> for CedrusError {
+    fn from(error: cedar_policy::RequestValidationError) -> Self {
+        Self::RequestValidationError(error)
     }
 }
 

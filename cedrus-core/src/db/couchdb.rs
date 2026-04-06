@@ -39,12 +39,13 @@ pub struct CouchDb {
 }
 
 impl CouchDb {
-    pub fn new(conf: &core::CouchDbConfig) -> CouchDb {
-        let client = couch_rs::Client::new(&conf.uri, &conf.username, &conf.password).unwrap();
-        Self {
+    pub fn new(conf: &core::CouchDbConfig) -> Result<Self, DatabaseError> {
+        let client = couch_rs::Client::new(&conf.uri, &conf.username, &conf.password)
+            .map_err(|e| DatabaseError::ConnectionError(e.to_string()))?;
+        Ok(Self {
             client,
             db_name: conf.db_name.clone(),
-        }
+        })
     }
 
     pub async fn init(&self) -> Result<(), Box<dyn std::error::Error>> {

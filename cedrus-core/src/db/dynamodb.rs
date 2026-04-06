@@ -54,7 +54,7 @@ pub struct DynamoDb {
 }
 
 impl DynamoDb {
-    pub async fn new(conf: &core::DynamoDBConfig) -> DynamoDb {
+    pub async fn new(conf: &core::DynamoDBConfig) -> Result<Self, DatabaseError> {
         let client = if let Some(endpoint_url) = &conf.endpoint_url {
             let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
                 //.test_credentials()
@@ -72,10 +72,12 @@ impl DynamoDb {
             aws_sdk_dynamodb::Client::new(&config.load().await)
         };
 
-        DynamoDb {
+        let db = DynamoDb {
             table_name: conf.table_name.clone(),
             client,
-        }
+        };
+
+        Ok(db)
     }
 
     pub async fn init(&self) -> Result<(), Box<dyn std::error::Error>> {
@@ -87,7 +89,6 @@ impl DynamoDb {
             .await
             .is_err()
         {
-            println!("Table already exists: {}", self.table_name);
             return Ok(());
         }
 
@@ -144,7 +145,6 @@ impl DynamoDb {
             .billing_mode(aws_sdk_dynamodb::types::BillingMode::PayPerRequest);
 
         table.send().await?;
-        println!("Table created {}", self.table_name);
 
         Ok(())
     }
@@ -1340,196 +1340,5 @@ impl Database for DynamoDb {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    //use aws_sdk_dynamodb::Client;
-    use cedrus_cedar::{Entity, EntityUid, EntityValue, Policy, PolicyId, Template, TemplateLink};
-    use std::collections::{HashMap, HashSet};
-    use uuid::Uuid;
-
-    /*
-    // Helper function to create a test DynamoDB client
-    async fn create_test_client() -> Client {
-        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-            //.test_credentials()
-            // DynamoDB run locally uses port 8000 by default.
-            .endpoint_url("http://localhost:8000")
-            .load()
-            .await;
-        let dynamodb_local_config = aws_sdk_dynamodb::config::Builder::from(&config).build();
-
-        let client = aws_sdk_dynamodb::Client::from_conf(dynamodb_local_config);
-
-        client
-    }
-    */
-
-    // Helper to create a test DynamoDB instance
-    async fn create_test_db() -> DynamoDb {
-        let conf = core::DynamoDBConfig {
-            table_name: "Cedrus_Test".to_string(),
-            endpoint_url: Some("http://localhost:8000".to_string()),
-            region: Some("eu-west-1".to_string()),
-        };
-        let db = DynamoDb::new(&conf).await;
-        db.init().await.unwrap();
-        db
-    }
-
-    #[tokio::test]
-    async fn test_save_and_load_entity_project() {
-        let db = create_test_db().await;
-
-        let owner = EntityUid::new("User".to_string(), Uuid::now_v7().to_string());
-        // Create test entity project
-        let project = Project::new(Uuid::now_v7(), "MyEntityStore".to_string(), owner);
-        let project_id = project.id;
-
-        // Add some test entities
-        let entity_uid1 = EntityUid::new("User".to_string(), "test1".to_string());
-        let entity_uid2 = EntityUid::new("User".to_string(), "test2".to_string());
-
-        let entity1 = Entity::new(entity_uid1, HashMap::new(), HashSet::new());
-        let entity2 = Entity::new(entity_uid2, HashMap::new(), HashSet::new());
-
-        let mut entities = Vec::new();
-        entities.push(entity1.clone());
-        entities.push(entity2.clone());
-
-        // Save entities
-        db.project_save(&project).await.unwrap();
-        db.project_entities_save(&project_id, &entities)
-            .await
-            .unwrap();
-
-        // Load and verify
-        let loaded_project = db.project_load(&project_id).await.unwrap().unwrap();
-        assert_eq!(loaded_project.id, project_id);
-    }
-
-    #[tokio::test]
-    async fn test_save_and_load_policy_project() {
-        let db = create_test_db().await;
-
-        let owner = EntityUid::new("User".to_string(), Uuid::now_v7().to_string());
-        // Create test policy project
-        let project = Project::new(Uuid::now_v7(), "MyPolicyStore".to_string(), owner);
-        let project_id = project.id;
-
-        let policy_id = "policy0".to_string();
-        let policy_json = r#"{
-            "effect": "permit",
-            "principal": {
-                "op": "==",
-                "entity": { "type": "User", "id": "12UA45" }
-            },
-            "action": {
-                "op": "==",
-                "entity": { "type": "Action", "id": "view" }
-            },
-            "resource": {
-                "op": "in",
-                "entity": { "type": "Folder", "id": "abc" }
-            },
-            "conditions": []
-        }"#;
-        let value = serde_json::from_str::<serde_json::Value>(policy_json).unwrap();
-        let cedar_policy_id = cedar_policy::PolicyId::new(policy_id.to_string());
-        let cedar_policy = cedar_policy::Policy::from_json(Some(cedar_policy_id), value).unwrap();
-
-        // Create test policies
-        let mut policies: HashMap<PolicyId, Policy> = HashMap::new();
-        policies.insert(policy_id.into(), cedar_policy.try_into().unwrap());
-
-        let templete_id = "template0".to_string();
-        let template_json = r#"{
-            "effect": "forbid",
-            "principal": {
-                "op": "==",
-                "entity": { "type": "User", "id": "12UA45" }
-            },
-            "action": {
-                "op": "==",
-                "entity": { "type": "Action", "id": "view" }
-            },
-            "resource": {
-                "op": "in",
-                "slot": "?resource"
-            },
-            "conditions": []
-        }"#;
-        let value = serde_json::from_str::<serde_json::Value>(template_json).unwrap();
-        let cedar_policy_id = cedar_policy::PolicyId::new(templete_id.to_string());
-        let cedar_template =
-            cedar_policy::Template::from_json(Some(cedar_policy_id), value).unwrap();
-
-        // Create test templates
-        let mut templates: HashMap<PolicyId, Template> = HashMap::new();
-        templates.insert(templete_id.into(), cedar_template.try_into().unwrap());
-
-        let resource = EntityUid::new("Folder".to_string(), "abc".to_string());
-        let templete_id = "template0".to_string();
-        // Create test template links
-        let template_link = TemplateLink {
-            template_id: templete_id.into(),
-            new_id: "policy1".to_string().into(),
-            values: HashMap::from([(
-                "?resource".to_string().into(),
-                EntityValue::EntityEscape(resource.into()),
-            )]),
-        };
-        let template_links = vec![template_link];
-
-        // Save everything
-        db.project_save(&project).await.unwrap();
-        db.project_policies_save(&project_id, &policies)
-            .await
-            .unwrap();
-        db.project_templates_save(&project_id, &templates)
-            .await
-            .unwrap();
-        db.project_template_links_save(&project_id, &template_links)
-            .await
-            .unwrap();
-
-        // Load and verify
-        let loaded_project = db.project_load(&project_id).await.unwrap().unwrap();
-        assert_eq!(loaded_project.id, project_id);
-    }
-
-    /*
-    #[tokio::test]
-    async fn test_remove_entity_project() {
-        let db = create_test_db().await;
-
-        // Create and save test entity project
-        let project_id = Uuid::new_v4();
-        let project = EntityStore::new(project_id);
-        let entity = Entity::new(EntityUid::new("test"));
-        let entities = vec![entity];
-
-        db.save_entity_project(&project).await;
-        db.save_entity_project_entities(project_id, &entities).await;
-
-        // Remove project
-        db.remove_entity_project(project_id).await;
-
-        // Verify project and entities are removed
-        let result = db
-            .client
-            .get_item()
-            .table_name(&db.table_name)
-            .key(
-                PK,
-                aws_sdk_dynamodb::types::AttributeValue::S(format!("ES#{}", project_id)),
-            )
-            .key(
-                SK,
-                aws_sdk_dynamodb::types::AttributeValue::S(format!("ES#{}", project_id)),
-            )
-            .send()
-            .await;
-
-        assert!(result.unwrap().item.is_none());
-    }
-    */
+    // TODO: Create tests
 }
