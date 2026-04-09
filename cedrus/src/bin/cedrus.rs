@@ -13,8 +13,6 @@ use cedrus_core::{
     pubsub::pubsub_factory,
 };
 use clap::Parser;
-use opentelemetry::trace::TracerProvider;
-use opentelemetry_appender_tracing::layer;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use tower_http::{
     compression::CompressionLayer,
@@ -32,7 +30,7 @@ use utoipa_swagger_ui::SwaggerUi;
 /// Initializes the OpenTelemetry tracer provider with OTLP gRPC export.
 /// The OTLP endpoint defaults to `http://localhost:4317` and can be overridden
 /// via the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable.
-#[cfg(feature = "otlp")]
+#[cfg(all(feature = "otlp", feature = "trace"))]
 fn init_tracer() -> opentelemetry_sdk::trace::SdkTracerProvider {
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_tonic()
@@ -49,7 +47,7 @@ fn init_tracer() -> opentelemetry_sdk::trace::SdkTracerProvider {
         .build()
 }
 
-#[cfg(feature = "otlp")]
+#[cfg(all(feature = "otlp", feature = "logs"))]
 fn init_logs() -> opentelemetry_sdk::logs::SdkLoggerProvider {
     let exporter = opentelemetry_otlp::LogExporter::builder()
         .with_tonic()
@@ -65,7 +63,7 @@ fn init_logs() -> opentelemetry_sdk::logs::SdkLoggerProvider {
         .build()
 }
 
-#[cfg(feature = "otlp")]
+#[cfg(all(feature = "otlp", feature = "metrics"))]
 fn init_metrics() -> opentelemetry_sdk::metrics::SdkMeterProvider {
     let exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_tonic()
@@ -81,7 +79,7 @@ fn init_metrics() -> opentelemetry_sdk::metrics::SdkMeterProvider {
         .build()
 }
 
-#[cfg(feature = "stdout")]
+#[cfg(all(feature = "stdout", feature = "trace"))]
 fn init_tracer() -> opentelemetry_sdk::trace::SdkTracerProvider {
     let exporter = opentelemetry_stdout::SpanExporter::default();
 
@@ -95,7 +93,7 @@ fn init_tracer() -> opentelemetry_sdk::trace::SdkTracerProvider {
         .build()
 }
 
-#[cfg(feature = "stdout")]
+#[cfg(all(feature = "stdout", feature = "logs"))]
 fn init_logs() -> opentelemetry_sdk::logs::SdkLoggerProvider {
     let exporter = opentelemetry_stdout::LogExporter::default();
     opentelemetry_sdk::logs::SdkLoggerProvider::builder()
@@ -108,7 +106,7 @@ fn init_logs() -> opentelemetry_sdk::logs::SdkLoggerProvider {
         .build()
 }
 
-#[cfg(feature = "stdout")]
+#[cfg(all(feature = "stdout", feature = "metrics"))]
 fn init_metrics() -> opentelemetry_sdk::metrics::SdkMeterProvider {
     let exporter = opentelemetry_stdout::MetricExporter::default();
     opentelemetry_sdk::metrics::SdkMeterProvider::builder()
@@ -271,10 +269,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer());
 
     #[cfg(all(feature = "trace", feature = "logs"))]
-    registry
-        .with(tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer("cedrus")))
-        .with(layer::OpenTelemetryTracingBridge::new(&logs_provider))
-        .init();
+    {
+        use opentelemetry::trace::TracerProvider;
+        registry
+            .with(tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer("cedrus")))
+            .with(
+                opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge::new(
+                    &logs_provider,
+                ),
+            )
+            .init();
+    }
 
     #[cfg(all(feature = "trace", not(feature = "logs")))]
     registry

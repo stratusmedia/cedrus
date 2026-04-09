@@ -41,7 +41,6 @@ impl Authorizer {
     }
 
     pub fn get_entity(&self, token: Value) -> Result<Entity, CedrusError> {
-        tracing::info!("get_entity: {}", token);
         let prefix = self.identity_source.prefix();
         let entity_type = self.identity_source.principal_entity_type.clone();
         let id_claim = self.identity_source.id_claim();

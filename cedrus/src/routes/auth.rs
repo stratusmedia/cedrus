@@ -62,11 +62,9 @@ pub async fn authorize(
 
         match state.tokens.get_value_or_guard_async(&token).await {
             Ok(entity_uid) => {
-                tracing::info!("auth cache hit");
                 req.extensions_mut().insert(entity_uid);
             }
             Err(guard) => {
-                tracing::info!("auth cache miss");
                 let authorizer = state.cedrus.project_authorizers.get(&Uuid::nil());
                 let Some(authorizer) = authorizer else {
                     tracing::warn!("no authorizer found for nil project");
