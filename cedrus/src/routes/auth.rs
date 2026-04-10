@@ -67,7 +67,6 @@ pub async fn authorize(
 
         match state.tokens.get_value_or_guard_async(&token).await {
             Ok(auth_data) => {
-                tracing::info!("Token found in cache");
                 let now = chrono::Utc::now().timestamp() as u64;
                 if auth_data.expires_at < now {
                     return Err(AuthError::Unauthorized);
@@ -76,7 +75,6 @@ pub async fn authorize(
                 req.extensions_mut().insert(auth_data.entity_uid.clone());
             }
             Err(guard) => {
-                tracing::info!("Token not found in cache");
                 let authorizer = state.cedrus.project_authorizers.get(&Uuid::nil());
                 let Some(authorizer) = authorizer else {
                     return Err(AuthError::Unauthorized);
