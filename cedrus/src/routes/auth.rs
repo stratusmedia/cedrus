@@ -1,17 +1,16 @@
-use std::sync::Arc;
+use std::{error::Error, fmt, sync::Arc};
 
 use axum::{
     body::Body,
-    extract::{Json, Request, State},
+    extract::{Request, State},
     http::{self, Response, StatusCode},
     middleware::Next,
     response::IntoResponse,
 };
 use headers::{Authorization, HeaderMapExt, authorization::Bearer};
-use serde_json::json;
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::{AppState, AuthData};
 
 const X_API_KEY: &str = "x-api-key";
 
@@ -21,18 +20,26 @@ fn stract_token(h: &http::HeaderMap) -> Option<String> {
     bearer_o.map(|b| String::from(b.0.token()))
 }
 
-pub struct AuthError {
-    message: String,
-    status_code: StatusCode,
+#[derive(Debug)]
+pub enum AuthError {
+    Unauthorized,
+}
+
+impl Error for AuthError {}
+
+impl fmt::Display for AuthError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            AuthError::Unauthorized => write!(f, "Unauthorized"),
+        }
+    }
 }
 
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response<Body> {
-        let body = Json(json!({
-            "error": self.message,
-        }));
-
-        (self.status_code, body).into_response()
+        match self {
+            AuthError::Unauthorized => (StatusCode::UNAUTHORIZED, Body::empty()).into_response(),
+        }
     }
 }
 
@@ -43,79 +50,67 @@ pub async fn authorize(
     next: Next,
 ) -> Result<Response<Body>, AuthError> {
     if let Some(header_api_key) = req.headers().get(X_API_KEY) {
-        let api_key = header_api_key.to_str().map_err(|_| AuthError {
-            message: "Unauthorized".to_string(),
-            status_code: StatusCode::UNAUTHORIZED,
-        })?;
-        let principal = state.cedrus.api_keys.get(api_key).ok_or(AuthError {
-            message: "Unauthorized".to_string(),
-            status_code: StatusCode::UNAUTHORIZED,
-        })?;
+        let api_key = header_api_key
+            .to_str()
+            .map_err(|_| AuthError::Unauthorized)?;
+        let principal = state
+            .cedrus
+            .api_keys
+            .get(api_key)
+            .ok_or(AuthError::Unauthorized)?;
+
         req.extensions_mut().insert(principal.value().clone());
     } else {
         let Some(token) = stract_token(req.headers()) else {
-            return Err(AuthError {
-                message: "Unauthorized".to_string(),
-                status_code: StatusCode::UNAUTHORIZED,
-            });
+            return Err(AuthError::Unauthorized);
         };
 
         match state.tokens.get_value_or_guard_async(&token).await {
-            Ok(entity_uid) => {
-                req.extensions_mut().insert(entity_uid);
+            Ok(auth_data) => {
+                tracing::info!("Token found in cache");
+                let now = chrono::Utc::now().timestamp() as u64;
+                if auth_data.expires_at < now {
+                    return Err(AuthError::Unauthorized);
+                }
+
+                req.extensions_mut().insert(auth_data.entity_uid.clone());
             }
             Err(guard) => {
+                tracing::info!("Token not found in cache");
                 let authorizer = state.cedrus.project_authorizers.get(&Uuid::nil());
                 let Some(authorizer) = authorizer else {
-                    tracing::warn!("no authorizer found for nil project");
-                    return Err(AuthError {
-                        message: "Unauthorized".to_string(),
-                        status_code: StatusCode::UNAUTHORIZED,
-                    });
+                    return Err(AuthError::Unauthorized);
                 };
 
-                let authorizer = authorizer.as_ref().ok_or(AuthError {
-                    message: "Unauthorized".to_string(),
-                    status_code: StatusCode::UNAUTHORIZED,
-                })?;
+                let authorizer = authorizer.as_ref().ok_or(AuthError::Unauthorized)?;
 
                 let token_data = match authorizer.jwt.check_auth(&token).await {
                     Ok(token_data) => token_data,
-                    Err(err) => {
-                        tracing::warn!(error = ?err, "JWT validation failed");
-                        return Err(AuthError {
-                            message: "Unauthorized".to_string(),
-                            status_code: StatusCode::UNAUTHORIZED,
-                        });
+                    Err(_err) => {
+                        return Err(AuthError::Unauthorized);
                     }
                 };
 
-                let entity = authorizer
-                    .get_entity(token_data.claims)
-                    .map_err(|_e| AuthError {
-                        message: "Unauthorized".to_string(),
-                        status_code: StatusCode::UNAUTHORIZED,
-                    })?;
+                let expires_at = token_data
+                    .claims
+                    .get("exp")
+                    .ok_or(AuthError::Unauthorized)?
+                    .as_u64()
+                    .ok_or(AuthError::Unauthorized)?;
 
-                let cedar_entity: cedar_policy::Entity =
-                    entity.to_cedar_entity(None).map_err(|_e| AuthError {
-                        message: "Unauthorized".to_string(),
-                        status_code: StatusCode::UNAUTHORIZED,
-                    })?;
+                let entity_uid = authorizer
+                    .get_entity_uid(&token_data.claims)
+                    .map_err(|_e| AuthError::Unauthorized)?;
 
-                let entities = state
-                    .cedrus
-                    .project_cedar_entities
-                    .get(&Uuid::nil())
-                    .ok_or(AuthError {
-                        message: "Unauthorized".to_string(),
-                        status_code: StatusCode::UNAUTHORIZED,
-                    })?;
-                entities.insert(entity.uid().clone(), (entity.clone(), cedar_entity));
+                req.extensions_mut().insert(entity_uid.clone());
 
-                req.extensions_mut().insert(entity.uid().clone());
+                let auth_data = AuthData {
+                    token: token_data,
+                    entity_uid,
+                    expires_at,
+                };
 
-                let _ = guard.insert(entity.uid().clone());
+                let _ = guard.insert(auth_data);
             }
         }
     }

@@ -9,8 +9,10 @@ use axum::{
 };
 use cedrus_cedar::EntityUid;
 use cedrus_core::{Query, Selector, core::cedrus::Cedrus};
+use jsonwebtoken::TokenData;
 use quick_cache::sync::Cache;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -29,9 +31,16 @@ where
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct AuthData {
+    pub token: TokenData<Value>,
+    pub entity_uid: EntityUid,
+    pub expires_at: u64,
+}
+
 pub struct AppState {
     pub cedrus: Cedrus,
-    pub tokens: Cache<String, EntityUid>,
+    pub tokens: Cache<String, AuthData>,
 }
 
 impl AppState {

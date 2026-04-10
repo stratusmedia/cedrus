@@ -40,6 +40,20 @@ impl Authorizer {
         }
     }
 
+    pub fn get_entity_uid(&self, token: &Value) -> Result<EntityUid, CedrusError> {
+        let prefix = self.identity_source.prefix();
+        let entity_type = self.identity_source.principal_entity_type.clone();
+        let id_claim = self.identity_source.id_claim();
+        let sub = token.get(id_claim).ok_or(CedrusError::Unauthorized)?;
+        let id = format!(
+            "{}|{}",
+            prefix,
+            sub.as_str().ok_or(CedrusError::Unauthorized)?
+        );
+
+        Ok(EntityUid::new(entity_type, id))
+    }
+
     pub fn get_entity(&self, token: Value) -> Result<Entity, CedrusError> {
         let prefix = self.identity_source.prefix();
         let entity_type = self.identity_source.principal_entity_type.clone();
