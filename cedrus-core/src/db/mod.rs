@@ -6,7 +6,10 @@ use uuid::Uuid;
 
 use crate::{
     PageHash, PageList, Query,
-    core::{DbConfig, IdentitySource, project::Project},
+    core::{
+        DbConfig, IdentitySource,
+        project::{ApiKey, Project},
+    },
 };
 
 pub mod couchdb;
@@ -80,6 +83,22 @@ pub trait Database: Send + Sync {
         identity_source: &IdentitySource,
     ) -> Result<(), DatabaseError>;
     async fn project_identity_source_remove(&self, project_id: &Uuid) -> Result<(), DatabaseError>;
+
+    async fn project_apikeys_load(
+        &self,
+        project_id: &Uuid,
+        query: &Query,
+    ) -> Result<PageList<ApiKey>, DatabaseError>;
+    async fn project_apikeys_save(
+        &self,
+        project_id: &Uuid,
+        apikeys: &Vec<ApiKey>,
+    ) -> Result<(), DatabaseError>;
+    async fn project_apikeys_remove(
+        &self,
+        project_id: &Uuid,
+        keys: &Vec<String>,
+    ) -> Result<(), DatabaseError>;
 
     async fn project_schema_load(&self, project_id: &Uuid)
     -> Result<Option<Schema>, DatabaseError>;

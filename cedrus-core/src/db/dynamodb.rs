@@ -7,7 +7,7 @@ use cedrus_cedar::{Entity, EntityUid, Policy, PolicyId, Schema, Template, Templa
 
 use crate::{
     PageHash, PageList, Query, Selector,
-    core::{self, IdentitySource, project::Project},
+    core::{self, IdentitySource, project::{Project, ApiKey}},
 };
 
 use super::{Database, DatabaseError};
@@ -19,6 +19,7 @@ const GSI1: &str = "GSI1";
 const GSI1_PK: &str = "GSI1PK";
 
 const PROJECT_TYPE: &str = "P";
+const PROJECT_APIKEY_TYPE: &str = "PAK";
 const PROJECT_IDENTITY_SOURCE_TYPE: &str = "PIS";
 const PROJECT_SCHEMA_TYPE: &str = "PS";
 const PROJECT_ENTITY_TYPE: &str = "PE";
@@ -282,6 +283,28 @@ impl DynamoDb {
         Ok(DynamoDb::default_namespace_to_empty(
             serde_dynamo::from_item(schema.clone())?,
         ))
+    }
+
+    fn project_apikey_to_item(
+        &self,
+        project_id: &Uuid,
+        apikey: &ApiKey,
+    ) -> Result<HashMap<String, aws_sdk_dynamodb::types::AttributeValue>, DatabaseError> {
+        let mut item: HashMap<String, aws_sdk_dynamodb::types::AttributeValue> =
+            serde_dynamo::to_item(apikey)?;
+
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
+        let sk = format!("{}#AK#{}", pk, apikey.key);
+        self.add_indexes_to_item(&mut item, &pk, &sk, PROJECT_APIKEY_TYPE);
+
+        Ok(item)
+    }
+
+    fn project_apikey_from_item(
+        &self,
+        item: &HashMap<String, aws_sdk_dynamodb::types::AttributeValue>,
+    ) -> Result<ApiKey, DatabaseError> {
+        Ok(serde_dynamo::from_item(item.clone())?)
     }
 
     fn project_identity_source_to_item(
@@ -719,6 +742,129 @@ impl Database for DynamoDb {
         request_items.push(request);
 
         self.batch_write_item(request_items).await?;
+
+        Ok(())
+    }
+
+    async fn project_apikeys_load(
+        &self,
+        project_id: &Uuid,
+        query: &Query,
+    ) -> Result<PageList<ApiKey>, DatabaseError> {
+        let mut filter = FilterExpression::new();
+
+        if let Some(selector) = query.selector.clone() {
+            self.selector_to_filter("".to_string(), selector, &mut filter);
+        }
+
+        let filter_expression = match !filter.expr.is_empty() {
+            true => Some(filter.expr),
+            false => None,
+        };
+
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
+        let sk = format!("{}#AK#", pk);
+
+        filter.names.insert("#PK".to_string(), PK.to_string());
+        filter.names.insert("#SK".to_string(), SK.to_string());
+        filter.values.insert(
+            ":PK".to_string(),
+            aws_sdk_dynamodb::types::AttributeValue::S(pk.to_string()),
+        );
+        filter.values.insert(
+            ":SK".to_string(),
+            aws_sdk_dynamodb::types::AttributeValue::S(sk.to_string()),
+        );
+
+        let mut stream = self
+            .client
+            .query()
+            .table_name(&self.table_name)
+            .key_condition_expression("#PK = :PK AND begins_with(#SK, :SK)")
+            .set_filter_expression(filter_expression)
+            .set_expression_attribute_names(Some(filter.names))
+            .set_expression_attribute_values(Some(filter.values))
+            .into_paginator()
+            .send();
+
+        let mut last_key = None;
+        let mut datas = Vec::new();
+        while let Some(page) = stream.next().await {
+            let page = page.map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
+            for item in page.items.unwrap_or_default() {
+                datas.push(Self::project_apikey_from_item(&self, &item)?);
+            }
+            if let Some(key) = page.last_evaluated_key {
+                let value: serde_json::Value = serde_dynamo::from_item(key)?;
+                last_key = Some(
+                    serde_json::to_string(&value)
+                        .map_err(|e| DatabaseError::SerializationError(e.to_string()))?,
+                );
+            }
+        }
+
+        Ok(PageList::new(datas, last_key))
+    }
+
+    async fn project_apikeys_save(
+        &self,
+        project_id: &Uuid,
+        apikeys: &Vec<ApiKey>,
+    ) -> Result<(), DatabaseError> {
+        let mut request_items = Vec::new();
+
+        for apikey in apikeys {
+            let item = self.project_apikey_to_item(project_id, apikey)?;
+            let request = aws_sdk_dynamodb::types::WriteRequest::builder()
+                .put_request(
+                    aws_sdk_dynamodb::types::PutRequest::builder()
+                        .set_item(Some(item))
+                        .build()
+                        .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?,
+                )
+                .build();
+            request_items.push(request);
+        }
+
+        if !request_items.is_empty() {
+            self.batch_write_item(request_items).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn project_apikeys_remove(
+        &self,
+        project_id: &Uuid,
+        keys: &Vec<String>,
+    ) -> Result<(), DatabaseError> {
+        let mut request_items = Vec::new();
+
+        for key in keys {
+            let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
+            let sk = format!("{}#AK#{}", pk, key);
+
+            let key_map = vec![
+                (PK.to_string(), aws_sdk_dynamodb::types::AttributeValue::S(pk)),
+                (SK.to_string(), aws_sdk_dynamodb::types::AttributeValue::S(sk)),
+            ]
+            .into_iter()
+            .collect();
+
+            let request = aws_sdk_dynamodb::types::WriteRequest::builder()
+                .delete_request(
+                    aws_sdk_dynamodb::types::DeleteRequest::builder()
+                        .set_key(Some(key_map))
+                        .build()
+                        .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?,
+                )
+                .build();
+            request_items.push(request);
+        }
+
+        if !request_items.is_empty() {
+            self.batch_write_item(request_items).await?;
+        }
 
         Ok(())
     }

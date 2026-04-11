@@ -11,7 +11,7 @@ use cedrus_cedar::{Entity, EntityUid, Policy, PolicyId, Schema, Template, Templa
 
 use crate::{
     PageHash, PageList, Query,
-    core::{self, IdentitySource, project::Project},
+    core::{self, IdentitySource, project::{Project, ApiKey}},
 };
 
 use super::{Database, DatabaseError};
@@ -26,6 +26,7 @@ const POLICY_ID_KEY: &str = "policyId";
 const SCHEMA_KEY: &str = "schema";
 
 const PROJECT_TYPE: &str = "P";
+const PROJECT_APIKEY_TYPE: &str = "PAK";
 const PROJECT_IDENTITY_SOURCE_TYPE: &str = "PIS";
 const PROJECT_SCHEMA_TYPE: &str = "PS";
 const PROJECT_ENTITY_TYPE: &str = "PE";
@@ -97,6 +98,34 @@ impl CouchDb {
     }
 
     fn project_from_value(value: Value) -> Result<Project, DatabaseError> {
+        Ok(serde_json::from_value(value)?)
+    }
+
+    fn project_apikey_id(project_id: &Uuid, key: &str) -> String {
+        format!("{}#{}#{}", PROJECT_APIKEY_TYPE, project_id.to_string(), key)
+    }
+
+    fn project_apikey_to_value(
+        project_id: &Uuid,
+        apikey: &ApiKey,
+    ) -> Result<Value, DatabaseError> {
+        let id = Self::project_apikey_id(project_id, &apikey.key);
+        let mut value = serde_json::to_value(apikey)?;
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert(ID_KEY.to_string(), Value::String(id));
+            obj.insert(
+                ENTITY_TYPE_KEY.to_string(),
+                Value::String(PROJECT_APIKEY_TYPE.to_string()),
+            );
+            obj.insert(
+                PROJECT_ID_KEY.to_string(),
+                Value::String(project_id.to_string()),
+            );
+        }
+        Ok(value)
+    }
+
+    fn project_apikey_from_value(value: Value) -> Result<ApiKey, DatabaseError> {
         Ok(serde_json::from_value(value)?)
     }
 
@@ -367,6 +396,45 @@ impl Database for CouchDb {
         let db = self.client.db(&self.db_name).await?;
         if let Some(doc) = db.get::<Value>(&id).await.ok() {
             let _ = db.remove(&doc).await;
+        }
+
+        Ok(())
+    }
+
+    async fn project_apikeys_load(&self, project_id: &Uuid, query: &Query) -> Result<PageList<ApiKey>, DatabaseError> {
+        let db = self.client.db(&self.db_name).await?;
+        let find = Self::query_to_find_query(query, PROJECT_APIKEY_TYPE, project_id)?;
+        let docs = db.find_raw(&find).await?;
+
+        let mut datas = Vec::new();
+        for doc in docs.rows {
+            datas.push(Self::project_apikey_from_value(doc)?);
+        }
+
+        Ok(PageList::new(datas, docs.bookmark))
+    }
+
+    async fn project_apikeys_save(
+        &self,
+        project_id: &Uuid,
+        apikeys: &Vec<ApiKey>,
+    ) -> Result<(), DatabaseError> {
+        let db = self.client.db(&self.db_name).await?;
+        for apikey in apikeys {
+            let mut value = Self::project_apikey_to_value(project_id, apikey)?;
+            db.upsert(&mut value).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn project_apikeys_remove(&self, project_id: &Uuid, keys: &Vec<String>) -> Result<(), DatabaseError> {
+        let db = self.client.db(&self.db_name).await?;
+        for key in keys {
+            let id = Self::project_apikey_id(project_id, key);
+            if let Some(doc) = db.get::<Value>(&id).await.ok() {
+                let _ = db.remove(&doc).await;
+            }
         }
 
         Ok(())

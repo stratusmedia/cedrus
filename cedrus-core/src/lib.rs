@@ -268,6 +268,10 @@ pub enum CedrusActions {
     GetProjectIdentitySource,
     PutProjectIdentitySource,
     DeleteProjectIdentitySource,
+    GetProjectApiKey,
+    PostProjectApiKey,
+    PutProjectApiKey,
+    DeleteProjectApiKey,
     GetProjectSchema,
     PutProjectSchema,
     DeleteProjectSchema,
@@ -313,6 +317,19 @@ impl CedrusActions {
             CedrusActions::DeleteProjectIdentitySource => EntityUid::new(
                 "Cedrus::Action".to_string(),
                 "deleteProjectSchema".to_string(),
+            ),
+            CedrusActions::GetProjectApiKey => {
+                EntityUid::new("Cedrus::Action".to_string(), "getProjectApiKey".to_string())
+            }
+            CedrusActions::PostProjectApiKey => {
+                EntityUid::new("Cedrus::Action".to_string(), "postProjectApiKey".to_string())
+            }
+            CedrusActions::PutProjectApiKey => {
+                EntityUid::new("Cedrus::Action".to_string(), "putProjectApiKey".to_string())
+            }
+            CedrusActions::DeleteProjectApiKey => EntityUid::new(
+                "Cedrus::Action".to_string(),
+                "deleteProjectApiKey".to_string(),
             ),
             CedrusActions::GetProjectSchema => {
                 EntityUid::new("Cedrus::Action".to_string(), "getProjectSchema".to_string())
@@ -499,7 +516,7 @@ pub enum EventType {
     ReloadAll,
     ProjectCreate(Uuid),
     ProjectUpdate(Uuid),
-    ProjectRemove(Uuid, String),
+    ProjectRemove(Uuid, Vec<String>),
     ProjectPutIdentitySource(Uuid),
     ProjectRemoveIdentitySource(Uuid),
     ProjectPutSchema(Uuid),
@@ -539,10 +556,10 @@ impl Event {
         }
     }
 
-    pub fn project_remove(sender: Uuid, project_id: Uuid, api_key: String) -> Self {
+    pub fn project_remove(sender: Uuid, project_id: Uuid, api_keys: Vec<String>) -> Self {
         Self {
             sender,
-            msg: EventType::ProjectRemove(project_id, api_key),
+            msg: EventType::ProjectRemove(project_id, api_keys),
         }
     }
 

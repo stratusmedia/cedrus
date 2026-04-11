@@ -11,7 +11,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use cedrus_core::{
-    core::{project::Project, IdentitySource}, CedrusActions, PageHash, PageList, Selector
+    core::{project::{Project, ApiKey}, IdentitySource}, CedrusActions, PageHash, PageList, Selector
 };
 
 use crate::{AppError, AppJson, AppState, QueryParams};
@@ -1424,6 +1424,132 @@ async fn projects_id_is_authorized_batch_post(
     Ok(AppJson(answers))
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/projects/{id}/apikeys",
+    params(
+        ("id" = Uuid, Path, description = "Project id")
+    ),
+    responses(
+        (status = 200, description = "API Keys list", body = Vec<ApiKey>)
+    ),
+    security(
+        ("bearerAuth" = []),
+        ("apiKey" = []),
+    )
+)]
+#[tracing::instrument(name = "projects_id_apikeys_get", skip(principal, state), fields(project_id = %id))]
+async fn projects_id_apikeys_get(
+    Extension(principal): Extension<EntityUid>,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+) -> Result<AppJson<Vec<ApiKey>>, AppError> {
+    if !state.cedrus.is_allow(principal, CedrusActions::GetProjectApiKey.value(), Project::entity_uid(id)) {
+        return Err(AppError::Forbidden);
+    }
+
+    let apikeys = state.cedrus.project_apikeys_find(id).await?;
+
+    Ok(AppJson(apikeys))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/projects/{id}/apikeys",
+    params(
+        ("id" = Uuid, Path, description = "Project id")
+    ),
+    request_body = ApiKey,
+    responses(
+        (status = 200, description = "API Key added", body = ApiKey)
+    ),
+    security(
+        ("bearerAuth" = []),
+        ("apiKey" = []),
+    )
+)]
+#[tracing::instrument(name = "projects_id_apikeys_post", skip(principal, state, apikey), fields(project_id = %id))]
+async fn projects_id_apikeys_post(
+    Extension(principal): Extension<EntityUid>,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+    Json(apikey): Json<ApiKey>,
+) -> Result<AppJson<ApiKey>, AppError> {
+    if !state.cedrus.is_allow(principal, CedrusActions::PostProjectApiKey.value(), Project::entity_uid(id)) {
+        return Err(AppError::Forbidden);
+    }
+
+    let apikey = state.cedrus.project_apikeys_add(id, apikey).await?;
+
+    Ok(AppJson(apikey))
+}
+
+#[utoipa::path(
+    put,
+    path = "/v1/projects/{id}/apikeys/{key}",
+    params(
+        ("id" = Uuid, Path, description = "Project id"),
+        ("key" = String, Path, description = "API key string")
+    ),
+    request_body = ApiKey,
+    responses(
+        (status = 200, description = "API Key updated", body = ApiKey)
+    ),
+    security(
+        ("bearerAuth" = []),
+        ("apiKey" = []),
+    )
+)]
+#[tracing::instrument(name = "projects_id_apikeys_key_put", skip(principal, state, apikey), fields(project_id = %id, key = %key))]
+async fn projects_id_apikeys_key_put(
+    Extension(principal): Extension<EntityUid>,
+    State(state): State<Arc<AppState>>,
+    Path((id, key)): Path<(Uuid, String)>,
+    Json(apikey): Json<ApiKey>,
+) -> Result<AppJson<ApiKey>, AppError> {
+    if !state.cedrus.is_allow(principal, CedrusActions::PutProjectApiKey.value(), Project::entity_uid(id)) {
+        return Err(AppError::Forbidden);
+    }
+    
+    if key != apikey.key {
+        return Err(AppError::BadRequest);
+    }
+
+    let apikey = state.cedrus.project_apikeys_update(id, apikey).await?;
+
+    Ok(AppJson(apikey))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/v1/projects/{id}/apikeys/{key}",
+    params(
+        ("id" = Uuid, Path, description = "Project id"),
+        ("key" = String, Path, description = "API key string")
+    ),
+    responses(
+        (status = 200, description = "API Key deleted")
+    ),
+    security(
+        ("bearerAuth" = []),
+        ("apiKey" = []),
+    )
+)]
+#[tracing::instrument(name = "projects_id_apikeys_key_delete", skip(principal, state), fields(project_id = %id, key = %key))]
+async fn projects_id_apikeys_key_delete(
+    Extension(principal): Extension<EntityUid>,
+    State(state): State<Arc<AppState>>,
+    Path((id, key)): Path<(Uuid, String)>,
+) -> Result<(), AppError> {
+    if !state.cedrus.is_allow(principal, CedrusActions::DeleteProjectApiKey.value(), Project::entity_uid(id)) {
+        return Err(AppError::Forbidden);
+    }
+
+    state.cedrus.project_apikeys_remove(id, key).await?;
+
+    Ok(())
+}
+
 pub fn routes() -> Router<Arc<AppState>> 
 {
     Router::new()
@@ -1435,6 +1561,10 @@ pub fn routes() -> Router<Arc<AppState>>
         .route("/{id}/identity-source", get(projects_id_identity_source_get))
         .route("/{id}/identity-source", put(projects_id_identity_source_put))
         .route("/{id}/identity-source", delete(projects_id_identity_source_delete))
+        .route("/{id}/apikeys", get(projects_id_apikeys_get))
+        .route("/{id}/apikeys", post(projects_id_apikeys_post))
+        .route("/{id}/apikeys/{key}", put(projects_id_apikeys_key_put))
+        .route("/{id}/apikeys/{key}", delete(projects_id_apikeys_key_delete))
         .route("/{id}/schema", get(projects_id_schema_get))
         .route("/{id}/schema", put(projects_id_schema_put))
         .route("/{id}/schema", delete(projects_id_schema_delete))
