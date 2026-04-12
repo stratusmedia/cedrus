@@ -225,9 +225,10 @@ struct Args {
     url_config: Option<String>,
 }
 
-fn subscribe_closure<'a>(
-    state: &'a Cedrus,
-) -> Box<dyn 'a + Send + Sync + Fn(Event) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>>> {
+type SubscribeFn<'a> =
+    Box<dyn 'a + Send + Sync + Fn(Event) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>>>;
+
+fn subscribe_closure<'a>(state: &'a Cedrus) -> SubscribeFn<'a> {
     let closure = move |msg: Event| -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
         Box::pin(async move {
             state.update(&msg, false).await;
@@ -357,7 +358,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(TraceLayer::new_for_http())
         .with_state(shared_state);
 
-    let addr = if let Ok(_) = std::env::var("CEDRUS_IPV6") {
+    let addr = if std::env::var("CEDRUS_IPV6").is_ok() {
         format!("[{}]:{}", config.server.host, config.server.port)
     } else {
         format!("{}:{}", config.server.host, config.server.port)

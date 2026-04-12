@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![allow(clippy::result_large_err)]
 
 pub mod proto {
     include!(concat!(env!("OUT_DIR"), "/cedar.rs"));
@@ -57,11 +58,11 @@ impl From<cedar_policy::EntityUid> for EntityUid {
     }
 }
 
-impl Into<cedar_policy::EntityUid> for EntityUid {
-    fn into(self) -> cedar_policy::EntityUid {
+impl From<EntityUid> for cedar_policy::EntityUid {
+    fn from(val: EntityUid) -> Self {
         cedar_policy::EntityUid::from_type_name_and_id(
-            cedar_policy::EntityTypeName::from_str(&self.r#type).unwrap(),
-            cedar_policy::EntityId::from_str(&self.id).unwrap(),
+            cedar_policy::EntityTypeName::from_str(&val.r#type).unwrap(),
+            cedar_policy::EntityId::from_str(&val.id).unwrap(),
         )
     }
 }
@@ -75,18 +76,18 @@ impl From<proto::EntityUid> for EntityUid {
     }
 }
 
-impl Into<proto::EntityUid> for EntityUid {
-    fn into(self) -> proto::EntityUid {
+impl From<EntityUid> for proto::EntityUid {
+    fn from(val: EntityUid) -> Self {
         proto::EntityUid {
-            r#type: self.r#type,
-            name: self.id,
+            r#type: val.r#type,
+            name: val.id,
         }
     }
 }
 
-impl ToString for EntityUid {
-    fn to_string(&self) -> String {
-        format!("{}::{}", self.r#type, self.id)
+impl std::fmt::Display for EntityUid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}::{}", self.r#type, self.id)
     }
 }
 
@@ -106,11 +107,11 @@ impl From<proto::ExtensionFn> for ExtensionFn {
     }
 }
 
-impl Into<proto::ExtensionFn> for ExtensionFn {
-    fn into(self) -> proto::ExtensionFn {
+impl From<ExtensionFn> for proto::ExtensionFn {
+    fn from(val: ExtensionFn) -> Self {
         proto::ExtensionFn {
-            r#fn: self.r#fn,
-            arg: self.arg,
+            r#fn: val.r#fn,
+            arg: val.arg,
         }
     }
 }
@@ -131,11 +132,11 @@ impl From<cedar_policy::EntityUid> for EntityUidEscape {
     }
 }
 
-impl Into<cedar_policy::EntityUid> for EntityUidEscape {
-    fn into(self) -> cedar_policy::EntityUid {
+impl From<EntityUidEscape> for cedar_policy::EntityUid {
+    fn from(val: EntityUidEscape) -> Self {
         cedar_policy::EntityUid::from_type_name_and_id(
-            cedar_policy::EntityTypeName::from_str(&self.entity.r#type).unwrap(),
-            cedar_policy::EntityId::from_str(&self.entity.id).unwrap(),
+            cedar_policy::EntityTypeName::from_str(&val.entity.r#type).unwrap(),
+            cedar_policy::EntityId::from_str(&val.entity.id).unwrap(),
         )
     }
 }
@@ -150,11 +151,11 @@ impl From<proto::EntityUidEscape> for EntityUidEscape {
     }
 }
 
-impl Into<proto::EntityUidEscape> for EntityUidEscape {
-    fn into(self) -> proto::EntityUidEscape {
+impl From<EntityUidEscape> for proto::EntityUidEscape {
+    fn from(val: EntityUidEscape) -> Self {
         proto::EntityUidEscape {
-            r#type: self.entity.r#type,
-            name: self.entity.id,
+            r#type: val.entity.r#type,
+            name: val.entity.id,
         }
     }
 }
@@ -165,18 +166,18 @@ impl From<EntityUid> for EntityUidEscape {
     }
 }
 
-impl Into<EntityUid> for EntityUidEscape {
-    fn into(self) -> EntityUid {
+impl From<EntityUidEscape> for EntityUid {
+    fn from(val: EntityUidEscape) -> Self {
         EntityUid {
-            r#type: self.entity.r#type,
-            id: self.entity.id,
+            r#type: val.entity.r#type,
+            id: val.entity.id,
         }
     }
 }
 
-impl ToString for EntityUidEscape {
-    fn to_string(&self) -> String {
-        format!("{}::{}", self.entity.r#type, self.entity.id)
+impl std::fmt::Display for EntityUidEscape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}::{}", self.entity.r#type, self.entity.id)
     }
 }
 
@@ -192,11 +193,11 @@ impl From<ExtensionFn> for ExtensionFnEscape {
     }
 }
 
-impl Into<ExtensionFn> for ExtensionFnEscape {
-    fn into(self) -> ExtensionFn {
+impl From<ExtensionFnEscape> for ExtensionFn {
+    fn from(val: ExtensionFnEscape) -> Self {
         ExtensionFn {
-            r#fn: self.extn.r#fn,
-            arg: self.extn.arg,
+            r#fn: val.extn.r#fn,
+            arg: val.extn.arg,
         }
     }
 }
@@ -211,11 +212,11 @@ impl From<proto::ExtensionFnEscape> for ExtensionFnEscape {
     }
 }
 
-impl Into<proto::ExtensionFnEscape> for ExtensionFnEscape {
-    fn into(self) -> proto::ExtensionFnEscape {
+impl From<ExtensionFnEscape> for proto::ExtensionFnEscape {
+    fn from(val: ExtensionFnEscape) -> Self {
         proto::ExtensionFnEscape {
-            r#fn: self.extn.r#fn,
-            arg: self.extn.arg,
+            r#fn: val.extn.r#fn,
+            arg: val.extn.arg,
         }
     }
 }
@@ -249,7 +250,7 @@ pub mod entity {
         fn from(value: proto::entity::EntityAttr) -> Self {
             match value.value.unwrap() {
                 proto::entity::entity_attr::Value::S(s) => Self::String(s),
-                proto::entity::entity_attr::Value::I(n) => Self::Number(n as i64),
+                proto::entity::entity_attr::Value::I(n) => Self::Number(n),
                 proto::entity::entity_attr::Value::B(b) => Self::Boolean(b),
                 proto::entity::entity_attr::Value::Euid(e) => Self::EntityUid(e.into()),
                 proto::entity::entity_attr::Value::Efn(f) => Self::Function(f.into()),
@@ -275,9 +276,9 @@ pub mod entity {
         }
     }
 
-    impl Into<proto::entity::EntityAttr> for EntityAttr {
-        fn into(self) -> proto::entity::EntityAttr {
-            let value = match self {
+    impl From<EntityAttr> for proto::entity::EntityAttr {
+        fn from(val: EntityAttr) -> Self {
+            let value = match val {
                 EntityAttr::String(s) => proto::entity::entity_attr::Value::S(s),
                 EntityAttr::Number(n) => proto::entity::entity_attr::Value::I(n),
                 EntityAttr::Boolean(b) => proto::entity::entity_attr::Value::B(b),
@@ -440,20 +441,20 @@ impl From<proto::Entity> for Entity {
     }
 }
 
-impl Into<proto::Entity> for Entity {
-    fn into(self) -> proto::Entity {
-        let uid = Some(self.uid.into());
-        let attrs = self
+impl From<Entity> for proto::Entity {
+    fn from(val: Entity) -> Self {
+        let uid = Some(val.uid.into());
+        let attrs = val
             .attrs
             .into_iter()
             .map(|(k, v)| (k, v.into()))
             .collect::<HashMap<String, proto::entity::EntityAttr>>();
-        let parents = self
+        let parents = val
             .parents
             .into_iter()
             .map(|p| p.into())
             .collect::<Vec<proto::EntityUid>>();
-        let tags = self
+        let tags = val
             .tags
             .into_iter()
             .map(|(k, v)| (k, v.into()))
@@ -586,9 +587,9 @@ pub mod schema {
         }
     }
 
-    impl Into<proto::schema::TypeJson> for TypeJson {
-        fn into(self) -> proto::schema::TypeJson {
-            let value = match self {
+    impl From<TypeJson> for proto::schema::TypeJson {
+        fn from(val: TypeJson) -> Self {
+            let value = match val {
                 TypeJson::Long { required } => {
                     proto::schema::type_json::Value::L(proto::schema::Long {
                         required: required.unwrap_or(true),
@@ -676,14 +677,14 @@ pub mod schema {
         }
     }
 
-    impl Into<proto::schema::EntityType> for EntityType {
-        fn into(self) -> proto::schema::EntityType {
+    impl From<EntityType> for proto::schema::EntityType {
+        fn from(val: EntityType) -> Self {
             proto::schema::EntityType {
-                member_of_types: self.member_of_types.unwrap_or_default(),
-                shape: self.shape.map(|s| s.into()),
-                tags: self.tags.map(|s| s.into()),
-                enums: self.r#enum.unwrap_or_default(),
-                annotations: self.annotations,
+                member_of_types: val.member_of_types.unwrap_or_default(),
+                shape: val.shape.map(|s| s.into()),
+                tags: val.tags.map(|s| s.into()),
+                enums: val.r#enum.unwrap_or_default(),
+                annotations: val.annotations,
             }
         }
     }
@@ -708,12 +709,12 @@ pub mod schema {
         }
     }
 
-    impl Into<proto::schema::AppliesTo> for AppliesTo {
-        fn into(self) -> proto::schema::AppliesTo {
+    impl From<AppliesTo> for proto::schema::AppliesTo {
+        fn from(val: AppliesTo) -> Self {
             proto::schema::AppliesTo {
-                principal_types: self.principal_types,
-                resource_types: self.resource_types,
-                context: self.context.map(|c| c.into()),
+                principal_types: val.principal_types,
+                resource_types: val.resource_types,
+                context: val.context.map(|c| c.into()),
             }
         }
     }
@@ -743,12 +744,12 @@ pub mod schema {
         }
     }
 
-    impl Into<proto::schema::Action> for Action {
-        fn into(self) -> proto::schema::Action {
+    impl From<Action> for proto::schema::Action {
+        fn from(val: Action) -> Self {
             proto::schema::Action {
-                member_of: self.member_of.unwrap_or_default(),
-                applies_to: self.applies_to.map(|a| a.into()),
-                annotations: self.annotations,
+                member_of: val.member_of.unwrap_or_default(),
+                applies_to: val.applies_to.map(|a| a.into()),
+                annotations: val.annotations,
             }
         }
     }
@@ -795,10 +796,10 @@ pub mod schema {
         }
     }
 
-    impl Into<proto::schema::Namespace> for Namespace {
-        fn into(self) -> proto::schema::Namespace {
+    impl From<Namespace> for proto::schema::Namespace {
+        fn from(val: Namespace) -> Self {
             let common_types = {
-                if let Some(common_types) = self.common_types {
+                if let Some(common_types) = val.common_types {
                     common_types
                         .into_iter()
                         .map(|(k, v)| (k, v.into()))
@@ -809,12 +810,12 @@ pub mod schema {
             };
 
             proto::schema::Namespace {
-                entity_types: self
+                entity_types: val
                     .entity_types
                     .into_iter()
                     .map(|(k, v)| (k, v.into()))
                     .collect(),
-                actions: self
+                actions: val
                     .actions
                     .into_iter()
                     .map(|(k, v)| (k, v.into()))
@@ -845,10 +846,10 @@ impl From<proto::Schema> for Schema {
     }
 }
 
-impl Into<proto::Schema> for Schema {
-    fn into(self) -> proto::Schema {
+impl From<Schema> for proto::Schema {
+    fn from(val: Schema) -> Self {
         proto::Schema {
-            ns: self.0.into_iter().map(|(k, v)| (k, v.into())).collect(),
+            ns: val.0.into_iter().map(|(k, v)| (k, v.into())).collect(),
         }
     }
 }
@@ -882,11 +883,11 @@ impl From<cedar_policy::SlotId> for SlotId {
     }
 }
 
-impl Into<cedar_policy::SlotId> for SlotId {
-    fn into(self) -> cedar_policy::SlotId {
-        match self {
-            Self::Principal => cedar_policy::SlotId::principal(),
-            Self::Resource => cedar_policy::SlotId::resource(),
+impl From<SlotId> for cedar_policy::SlotId {
+    fn from(val: SlotId) -> Self {
+        match val {
+            SlotId::Principal => cedar_policy::SlotId::principal(),
+            SlotId::Resource => cedar_policy::SlotId::resource(),
         }
     }
 }
@@ -900,20 +901,20 @@ impl From<proto::SlotId> for SlotId {
     }
 }
 
-impl Into<proto::SlotId> for SlotId {
-    fn into(self) -> proto::SlotId {
-        match self {
-            Self::Principal => proto::SlotId::Principal,
-            Self::Resource => proto::SlotId::Resource,
+impl From<SlotId> for proto::SlotId {
+    fn from(val: SlotId) -> Self {
+        match val {
+            SlotId::Principal => proto::SlotId::Principal,
+            SlotId::Resource => proto::SlotId::Resource,
         }
     }
 }
 
-impl ToString for SlotId {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for SlotId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Principal => "?principal".to_string(),
-            Self::Resource => "?resource".to_string(),
+            Self::Principal => write!(f, "?principal"),
+            Self::Resource => write!(f, "?resource"),
         }
     }
 }
@@ -942,15 +943,15 @@ impl From<proto::EntityOrSlot> for EntityOrSlot {
     }
 }
 
-impl Into<proto::EntityOrSlot> for EntityOrSlot {
-    fn into(self) -> proto::EntityOrSlot {
-        if let Some(entity) = self.entity {
+impl From<EntityOrSlot> for proto::EntityOrSlot {
+    fn from(val: EntityOrSlot) -> Self {
+        if let Some(entity) = val.entity {
             proto::EntityOrSlot {
                 entity: Some(entity.into()),
                 slot: 0,
             }
         } else {
-            let slot: proto::SlotId = self.slot.unwrap().into();
+            let slot: proto::SlotId = val.slot.unwrap().into();
             proto::EntityOrSlot {
                 entity: None,
                 slot: slot.into(),
@@ -982,13 +983,13 @@ impl From<proto::principal_op::Operator> for PrincipalOperator {
     }
 }
 
-impl Into<proto::principal_op::Operator> for PrincipalOperator {
-    fn into(self) -> proto::principal_op::Operator {
-        match self {
-            Self::All => proto::principal_op::Operator::All,
-            Self::Eq => proto::principal_op::Operator::Eq,
-            Self::In => proto::principal_op::Operator::In,
-            Self::Is => proto::principal_op::Operator::Is,
+impl From<PrincipalOperator> for proto::principal_op::Operator {
+    fn from(val: PrincipalOperator) -> Self {
+        match val {
+            PrincipalOperator::All => proto::principal_op::Operator::All,
+            PrincipalOperator::Eq => proto::principal_op::Operator::Eq,
+            PrincipalOperator::In => proto::principal_op::Operator::In,
+            PrincipalOperator::Is => proto::principal_op::Operator::Is,
         }
     }
 }
@@ -1016,13 +1017,13 @@ impl From<proto::resource_op::Operator> for ResourceOperator {
     }
 }
 
-impl Into<proto::resource_op::Operator> for ResourceOperator {
-    fn into(self) -> proto::resource_op::Operator {
-        match self {
-            Self::All => proto::resource_op::Operator::All,
-            Self::Eq => proto::resource_op::Operator::Eq,
-            Self::In => proto::resource_op::Operator::In,
-            Self::Is => proto::resource_op::Operator::Is,
+impl From<ResourceOperator> for proto::resource_op::Operator {
+    fn from(val: ResourceOperator) -> Self {
+        match val {
+            ResourceOperator::All => proto::resource_op::Operator::All,
+            ResourceOperator::Eq => proto::resource_op::Operator::Eq,
+            ResourceOperator::In => proto::resource_op::Operator::In,
+            ResourceOperator::Is => proto::resource_op::Operator::Is,
         }
     }
 }
@@ -1047,12 +1048,12 @@ impl From<proto::action_op::Operator> for ActionOperator {
     }
 }
 
-impl Into<proto::action_op::Operator> for ActionOperator {
-    fn into(self) -> proto::action_op::Operator {
-        match self {
-            Self::All => proto::action_op::Operator::All,
-            Self::Eq => proto::action_op::Operator::Eq,
-            Self::In => proto::action_op::Operator::In,
+impl From<ActionOperator> for proto::action_op::Operator {
+    fn from(val: ActionOperator) -> Self {
+        match val {
+            ActionOperator::All => proto::action_op::Operator::All,
+            ActionOperator::Eq => proto::action_op::Operator::Eq,
+            ActionOperator::In => proto::action_op::Operator::In,
         }
     }
 }
@@ -1109,9 +1110,9 @@ impl From<proto::PrincipalOp> for PrincipalOp {
     }
 }
 
-impl Into<proto::PrincipalOp> for PrincipalOp {
-    fn into(self) -> proto::PrincipalOp {
-        let op: proto::principal_op::Operator = self.op.into();
+impl From<PrincipalOp> for proto::PrincipalOp {
+    fn from(val: PrincipalOp) -> Self {
+        let op: proto::principal_op::Operator = val.op.into();
 
         match op {
             proto::principal_op::Operator::All => proto::PrincipalOp {
@@ -1120,19 +1121,19 @@ impl Into<proto::PrincipalOp> for PrincipalOp {
             },
             proto::principal_op::Operator::Is => proto::PrincipalOp {
                 op: op.into(),
-                entity_type: self.entity_type.unwrap_or_default(),
-                eors: self.r#in.map(|v| v.into()),
+                entity_type: val.entity_type.unwrap_or_default(),
+                eors: val.r#in.map(|v| v.into()),
                 ..Default::default()
             },
             _ => {
-                if let Some(entity) = self.entity {
+                if let Some(entity) = val.entity {
                     proto::PrincipalOp {
                         op: op.into(),
                         entity: Some(entity.into()),
                         ..Default::default()
                     }
                 } else {
-                    let slot: proto::SlotId = self.slot.unwrap().into();
+                    let slot: proto::SlotId = val.slot.unwrap().into();
                     proto::PrincipalOp {
                         op: op.into(),
                         slot: slot.into(),
@@ -1196,9 +1197,9 @@ impl From<proto::ResourceOp> for ResourceOp {
     }
 }
 
-impl Into<proto::ResourceOp> for ResourceOp {
-    fn into(self) -> proto::ResourceOp {
-        let op: proto::resource_op::Operator = self.op.into();
+impl From<ResourceOp> for proto::ResourceOp {
+    fn from(val: ResourceOp) -> Self {
+        let op: proto::resource_op::Operator = val.op.into();
 
         match op {
             proto::resource_op::Operator::All => proto::ResourceOp {
@@ -1207,19 +1208,19 @@ impl Into<proto::ResourceOp> for ResourceOp {
             },
             proto::resource_op::Operator::Is => proto::ResourceOp {
                 op: op.into(),
-                entity_type: self.entity_type.unwrap_or_default(),
-                eors: self.r#in.map(|v| v.into()),
+                entity_type: val.entity_type.unwrap_or_default(),
+                eors: val.r#in.map(|v| v.into()),
                 ..Default::default()
             },
             _ => {
-                if let Some(entity) = self.entity {
+                if let Some(entity) = val.entity {
                     proto::ResourceOp {
                         op: op.into(),
                         entity: Some(entity.into()),
                         ..Default::default()
                     }
                 } else {
-                    let slot: proto::SlotId = self.slot.unwrap().into();
+                    let slot: proto::SlotId = val.slot.unwrap().into();
                     proto::ResourceOp {
                         op: op.into(),
                         slot: slot.into(),
@@ -1271,9 +1272,9 @@ impl From<proto::ActionOp> for ActionOp {
     }
 }
 
-impl Into<proto::ActionOp> for ActionOp {
-    fn into(self) -> proto::ActionOp {
-        let op: proto::action_op::Operator = self.op.into();
+impl From<ActionOp> for proto::ActionOp {
+    fn from(val: ActionOp) -> Self {
+        let op: proto::action_op::Operator = val.op.into();
 
         match op {
             proto::action_op::Operator::All => proto::ActionOp {
@@ -1281,7 +1282,7 @@ impl Into<proto::ActionOp> for ActionOp {
                 ..Default::default()
             },
             _ => {
-                if let Some(entity) = self.entity {
+                if let Some(entity) = val.entity {
                     proto::ActionOp {
                         op: op.into(),
                         entity: Some(entity.into()),
@@ -1290,7 +1291,7 @@ impl Into<proto::ActionOp> for ActionOp {
                 } else {
                     proto::ActionOp {
                         op: op.into(),
-                        entities: self
+                        entities: val
                             .entities
                             .unwrap()
                             .into_iter()
@@ -1319,10 +1320,10 @@ impl From<proto::json_expr::value_expr::Set> for SetExpr {
     }
 }
 
-impl Into<proto::json_expr::value_expr::Set> for SetExpr {
-    fn into(self) -> proto::json_expr::value_expr::Set {
+impl From<SetExpr> for proto::json_expr::value_expr::Set {
+    fn from(val: SetExpr) -> Self {
         proto::json_expr::value_expr::Set {
-            set: self.set.into_iter().map(|e| e.into()).collect(),
+            set: val.set.into_iter().map(|e| e.into()).collect(),
         }
     }
 }
@@ -1346,14 +1347,10 @@ impl From<proto::json_expr::value_expr::Record> for RecordExpr {
     }
 }
 
-impl Into<proto::json_expr::value_expr::Record> for RecordExpr {
-    fn into(self) -> proto::json_expr::value_expr::Record {
+impl From<RecordExpr> for proto::json_expr::value_expr::Record {
+    fn from(val: RecordExpr) -> Self {
         proto::json_expr::value_expr::Record {
-            record: self
-                .record
-                .into_iter()
-                .map(|(k, v)| (k, v.into()))
-                .collect(),
+            record: val.record.into_iter().map(|(k, v)| (k, v.into())).collect(),
         }
     }
 }
@@ -1398,10 +1395,10 @@ impl From<proto::json_expr::ValueExpr> for ValueExpr {
     }
 }
 
-impl Into<proto::json_expr::ValueExpr> for ValueExpr {
-    fn into(self) -> proto::json_expr::ValueExpr {
+impl From<ValueExpr> for proto::json_expr::ValueExpr {
+    fn from(val: ValueExpr) -> Self {
         proto::json_expr::ValueExpr {
-            value: Some(match self {
+            value: Some(match val {
                 ValueExpr::String(s) => proto::json_expr::value_expr::Value::S(s),
                 ValueExpr::Number(n) => proto::json_expr::value_expr::Value::I(n),
                 ValueExpr::Boolean(b) => proto::json_expr::value_expr::Value::B(b),
@@ -1447,9 +1444,9 @@ impl From<proto::json_expr::VarValue> for VarValue {
     }
 }
 
-impl Into<proto::json_expr::VarValue> for VarValue {
-    fn into(self) -> proto::json_expr::VarValue {
-        match self {
+impl From<VarValue> for proto::json_expr::VarValue {
+    fn from(val: VarValue) -> Self {
+        match val {
             VarValue::Principal => proto::json_expr::VarValue::Principal,
             VarValue::Action => proto::json_expr::VarValue::Action,
             VarValue::Resource => proto::json_expr::VarValue::Resource,
@@ -1474,11 +1471,11 @@ impl From<proto::json_expr::HasExpr> for HasExpr {
     }
 }
 
-impl Into<proto::json_expr::HasExpr> for HasExpr {
-    fn into(self) -> proto::json_expr::HasExpr {
+impl From<HasExpr> for proto::json_expr::HasExpr {
+    fn from(val: HasExpr) -> Self {
         proto::json_expr::HasExpr {
-            left: Some(::prost::alloc::boxed::Box::new(self.left.into())),
-            attr: self.attr,
+            left: Some(::prost::alloc::boxed::Box::new(val.left.into())),
+            attr: val.attr,
         }
     }
 }
@@ -1500,11 +1497,11 @@ impl From<proto::json_expr::BinaryExpr> for BinaryExpr {
     }
 }
 
-impl Into<proto::json_expr::BinaryExpr> for BinaryExpr {
-    fn into(self) -> proto::json_expr::BinaryExpr {
+impl From<BinaryExpr> for proto::json_expr::BinaryExpr {
+    fn from(val: BinaryExpr) -> Self {
         proto::json_expr::BinaryExpr {
-            left: Some(::prost::alloc::boxed::Box::new(self.left.into())),
-            right: Some(::prost::alloc::boxed::Box::new(self.right.into())),
+            left: Some(::prost::alloc::boxed::Box::new(val.left.into())),
+            right: Some(::prost::alloc::boxed::Box::new(val.right.into())),
         }
     }
 }
@@ -1523,10 +1520,10 @@ impl From<proto::json_expr::NegExpr> for NegExpr {
     }
 }
 
-impl Into<proto::json_expr::NegExpr> for NegExpr {
-    fn into(self) -> proto::json_expr::NegExpr {
+impl From<NegExpr> for proto::json_expr::NegExpr {
+    fn from(val: NegExpr) -> Self {
         proto::json_expr::NegExpr {
-            arg: Some(::prost::alloc::boxed::Box::new(self.arg.into())),
+            arg: Some(::prost::alloc::boxed::Box::new(val.arg.into())),
         }
     }
 }
@@ -1547,11 +1544,11 @@ impl From<proto::json_expr::IsExpr> for IsExpr {
     }
 }
 
-impl Into<proto::json_expr::IsExpr> for IsExpr {
-    fn into(self) -> proto::json_expr::IsExpr {
+impl From<IsExpr> for proto::json_expr::IsExpr {
+    fn from(val: IsExpr) -> Self {
         proto::json_expr::IsExpr {
-            left: Some(::prost::alloc::boxed::Box::new(self.left.into())),
-            entity_type: self.entity_type,
+            left: Some(::prost::alloc::boxed::Box::new(val.left.into())),
+            entity_type: val.entity_type,
         }
     }
 }
@@ -1585,9 +1582,9 @@ impl From<proto::json_expr::LikeExpr> for LikeExpr {
     }
 }
 
-impl Into<proto::json_expr::LikeExpr> for LikeExpr {
-    fn into(self) -> proto::json_expr::LikeExpr {
-        let pattern = self
+impl From<LikeExpr> for proto::json_expr::LikeExpr {
+    fn from(val: LikeExpr) -> Self {
+        let pattern = val
             .pattern
             .into_iter()
             .map(|e| proto::json_expr::PatternElem {
@@ -1599,7 +1596,7 @@ impl Into<proto::json_expr::LikeExpr> for LikeExpr {
             .collect();
 
         proto::json_expr::LikeExpr {
-            left: Some(::prost::alloc::boxed::Box::new(self.left.into())),
+            left: Some(::prost::alloc::boxed::Box::new(val.left.into())),
             pattern,
         }
     }
@@ -1628,12 +1625,12 @@ impl From<proto::json_expr::IfThenElseExpr> for IfThenElseExpr {
     }
 }
 
-impl Into<proto::json_expr::IfThenElseExpr> for IfThenElseExpr {
-    fn into(self) -> proto::json_expr::IfThenElseExpr {
+impl From<IfThenElseExpr> for proto::json_expr::IfThenElseExpr {
+    fn from(val: IfThenElseExpr) -> Self {
         proto::json_expr::IfThenElseExpr {
-            r#if: Some(Box::new(self.r#if.into())),
-            then: Some(Box::new(self.then.into())),
-            r#else: Some(Box::new(self.r#else.into())),
+            r#if: Some(Box::new(val.r#if.into())),
+            then: Some(Box::new(val.then.into())),
+            r#else: Some(Box::new(val.r#else.into())),
         }
     }
 }
@@ -1826,7 +1823,7 @@ impl From<proto::JsonExpr> for JsonExpr {
                 JsonExpr::IfThenElse(Box::new((*expr).into()))
             }
             proto::json_expr::Expr::Set(set) => {
-                JsonExpr::Set(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::Set(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::Record(record) => JsonExpr::Record(
                 record
@@ -1836,78 +1833,78 @@ impl From<proto::JsonExpr> for JsonExpr {
                     .collect(),
             ),
             proto::json_expr::Expr::Datetime(set) => {
-                JsonExpr::Datetime(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::Datetime(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::Decimal(set) => {
-                JsonExpr::Decimal(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::Decimal(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::Duration(set) => {
-                JsonExpr::Duration(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::Duration(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::Ip(set) => {
-                JsonExpr::Ip(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::Ip(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::IsIpV4(set) => {
-                JsonExpr::IsIpV4(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::IsIpV4(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::IsIpV6(set) => {
-                JsonExpr::IsIpV6(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::IsIpV6(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::IsLoopback(set) => {
-                JsonExpr::IsLoopback(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::IsLoopback(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::IsMulticast(set) => {
-                JsonExpr::IsMulticast(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::IsMulticast(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::IsInRange(set) => {
-                JsonExpr::IsInRange(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::IsInRange(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::Offset(set) => {
-                JsonExpr::Offset(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::Offset(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::DurationSince(set) => {
-                JsonExpr::DurationSince(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::DurationSince(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::ToDate(set) => {
-                JsonExpr::ToDate(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::ToDate(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::ToTime(set) => {
-                JsonExpr::ToTime(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::ToTime(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::ToMilliseconds(set) => {
-                JsonExpr::ToMilliseconds(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::ToMilliseconds(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::ToSeconds(set) => {
-                JsonExpr::ToSeconds(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::ToSeconds(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::ToMinutes(set) => {
-                JsonExpr::ToMinutes(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::ToMinutes(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::ToHours(set) => {
-                JsonExpr::ToHours(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::ToHours(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::ToDays(set) => {
-                JsonExpr::ToDays(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::ToDays(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::LessThan(set) => {
-                JsonExpr::LessThan(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::LessThan(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::LessThanOrEqual(set) => {
-                JsonExpr::LessThanOrEqual(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::LessThanOrEqual(set.set.into_iter().map(JsonExpr::from).collect())
             }
             proto::json_expr::Expr::GreaterThan(set) => {
-                JsonExpr::GreaterThan(set.set.into_iter().map(|e| JsonExpr::from(e)).collect())
+                JsonExpr::GreaterThan(set.set.into_iter().map(JsonExpr::from).collect())
             }
-            proto::json_expr::Expr::GreaterThanOrEqual(set) => JsonExpr::GreaterThanOrEqual(
-                set.set.into_iter().map(|e| JsonExpr::from(e)).collect(),
-            ),
+            proto::json_expr::Expr::GreaterThanOrEqual(set) => {
+                JsonExpr::GreaterThanOrEqual(set.set.into_iter().map(JsonExpr::from).collect())
+            }
         }
     }
 }
 
-impl Into<proto::JsonExpr> for JsonExpr {
-    fn into(self) -> proto::JsonExpr {
-        match self {
+impl From<JsonExpr> for proto::JsonExpr {
+    fn from(val: JsonExpr) -> Self {
+        match val {
             JsonExpr::Value(value_expr) => proto::JsonExpr {
                 expr: Some(proto::json_expr::Expr::Value(value_expr.into())),
             },
@@ -2196,9 +2193,9 @@ impl From<proto::ConditionKind> for ConditionKind {
     }
 }
 
-impl Into<proto::ConditionKind> for ConditionKind {
-    fn into(self) -> proto::ConditionKind {
-        match self {
+impl From<ConditionKind> for proto::ConditionKind {
+    fn from(val: ConditionKind) -> Self {
+        match val {
             ConditionKind::When => proto::ConditionKind::When,
             ConditionKind::Unless => proto::ConditionKind::Unless,
         }
@@ -2220,11 +2217,11 @@ impl From<proto::Condition> for Condition {
     }
 }
 
-impl Into<proto::Condition> for Condition {
-    fn into(self) -> proto::Condition {
+impl From<Condition> for proto::Condition {
+    fn from(val: Condition) -> Self {
         proto::Condition {
-            kind: Into::<proto::ConditionKind>::into(self.kind) as i32,
-            body: Some(self.body.into()),
+            kind: Into::<proto::ConditionKind>::into(val.kind) as i32,
+            body: Some(val.body.into()),
         }
     }
 }
@@ -2247,9 +2244,9 @@ impl From<proto::Effect> for PolicyEffect {
     }
 }
 
-impl Into<proto::Effect> for PolicyEffect {
-    fn into(self) -> proto::Effect {
-        match self {
+impl From<PolicyEffect> for proto::Effect {
+    fn from(val: PolicyEffect) -> Self {
+        match val {
             PolicyEffect::Permit => proto::Effect::Permit,
             PolicyEffect::Forbid => proto::Effect::Forbid,
         }
@@ -2299,15 +2296,15 @@ impl From<proto::Policy> for Policy {
     }
 }
 
-impl Into<proto::Policy> for Policy {
-    fn into(self) -> proto::Policy {
+impl From<Policy> for proto::Policy {
+    fn from(val: Policy) -> Self {
         proto::Policy {
-            effect: Into::<proto::Effect>::into(self.effect) as i32,
-            principal: Some(self.principal.into()),
-            action: Some(self.action.into()),
-            resource: Some(self.resource.into()),
-            conditions: self.conditions.into_iter().map(|c| c.into()).collect(),
-            annotations: self
+            effect: Into::<proto::Effect>::into(val.effect) as i32,
+            principal: Some(val.principal.into()),
+            action: Some(val.action.into()),
+            resource: Some(val.resource.into()),
+            conditions: val.conditions.into_iter().map(|c| c.into()).collect(),
+            annotations: val
                 .annotations
                 .into_iter()
                 .map(|(k, v)| (k, v.unwrap_or_default()))
@@ -2379,15 +2376,15 @@ impl From<proto::Template> for Template {
     }
 }
 
-impl Into<proto::Template> for Template {
-    fn into(self) -> proto::Template {
+impl From<Template> for proto::Template {
+    fn from(val: Template) -> Self {
         proto::Template {
-            effect: Into::<proto::Effect>::into(self.effect) as i32,
-            principal: Some(self.principal.into()),
-            action: Some(self.action.into()),
-            resource: Some(self.resource.into()),
-            conditions: self.conditions.into_iter().map(|c| c.into()).collect(),
-            annotations: self
+            effect: Into::<proto::Effect>::into(val.effect) as i32,
+            principal: Some(val.principal.into()),
+            action: Some(val.action.into()),
+            resource: Some(val.resource.into()),
+            conditions: val.conditions.into_iter().map(|c| c.into()).collect(),
+            annotations: val
                 .annotations
                 .into_iter()
                 .map(|(k, v)| (k, v.unwrap_or_default()))
@@ -2433,15 +2430,15 @@ impl From<cedar_policy::PolicyId> for PolicyId {
     }
 }
 
-impl Into<cedar_policy::PolicyId> for PolicyId {
-    fn into(self) -> cedar_policy::PolicyId {
-        cedar_policy::PolicyId::new(&self.0)
+impl From<PolicyId> for cedar_policy::PolicyId {
+    fn from(val: PolicyId) -> Self {
+        cedar_policy::PolicyId::new(&val.0)
     }
 }
 
-impl ToString for PolicyId {
-    fn to_string(&self) -> String {
-        self.0.to_string()
+impl std::fmt::Display for PolicyId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -2470,9 +2467,9 @@ impl From<cedar_policy::EntityUid> for EntityValue {
     }
 }
 
-impl Into<cedar_policy::EntityUid> for EntityValue {
-    fn into(self) -> cedar_policy::EntityUid {
-        match self {
+impl From<EntityValue> for cedar_policy::EntityUid {
+    fn from(val: EntityValue) -> Self {
+        match val {
             EntityValue::EntityUid(e) => e.into(),
             EntityValue::EntityEscape(e) => e.into(),
         }
@@ -2488,9 +2485,9 @@ impl From<proto::EntityValue> for EntityValue {
     }
 }
 
-impl Into<proto::EntityValue> for EntityValue {
-    fn into(self) -> proto::EntityValue {
-        match self {
+impl From<EntityValue> for proto::EntityValue {
+    fn from(val: EntityValue) -> Self {
+        match val {
             EntityValue::EntityUid(e) => proto::EntityValue {
                 value: Some(proto::entity_value::Value::Euid(e.into())),
             },
@@ -2544,12 +2541,12 @@ impl From<proto::TemplateLink> for TemplateLink {
     }
 }
 
-impl Into<proto::TemplateLink> for TemplateLink {
-    fn into(self) -> proto::TemplateLink {
+impl From<TemplateLink> for proto::TemplateLink {
+    fn from(val: TemplateLink) -> Self {
         proto::TemplateLink {
-            template_id: self.template_id.to_string(),
-            new_id: self.new_id.to_string(),
-            values: self
+            template_id: val.template_id.to_string(),
+            new_id: val.new_id.to_string(),
+            values: val
                 .values
                 .into_iter()
                 .map(|(k, v)| (k.to_string(), v.into()))
@@ -2603,20 +2600,20 @@ impl From<proto::PolicySet> for PolicySet {
     }
 }
 
-impl Into<proto::PolicySet> for PolicySet {
-    fn into(self) -> proto::PolicySet {
+impl From<PolicySet> for proto::PolicySet {
+    fn from(val: PolicySet) -> Self {
         proto::PolicySet {
-            static_policies: self
+            static_policies: val
                 .static_policies
                 .into_iter()
                 .map(|(k, v)| (k.to_string(), v.into()))
                 .collect(),
-            templates: self
+            templates: val
                 .templates
                 .into_iter()
                 .map(|(k, v)| (k.to_string(), v.into()))
                 .collect(),
-            template_links: self.template_links.into_iter().map(|v| v.into()).collect(),
+            template_links: val.template_links.into_iter().map(|v| v.into()).collect(),
         }
     }
 }
@@ -2690,13 +2687,11 @@ impl From<cedar_policy::Response> for Response {
         let reason = value
             .diagnostics()
             .reason()
-            .into_iter()
             .map(|r| r.to_string())
             .collect::<Vec<String>>();
         let errors = value
             .diagnostics()
             .errors()
-            .into_iter()
             .map(|e| e.to_string())
             .collect::<Vec<String>>();
 

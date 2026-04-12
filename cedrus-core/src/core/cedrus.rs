@@ -306,7 +306,7 @@ impl Cedrus {
         project_id: &Uuid,
         entity_uids: &[EntityUid],
     ) -> Result<(), CedrusError> {
-        if let Some(cedar_entities) = self.project_cedar_entities.get_mut(&project_id) {
+        if let Some(cedar_entities) = self.project_cedar_entities.get_mut(project_id) {
             for entity_uid in entity_uids {
                 cedar_entities.remove(entity_uid);
             }
@@ -360,7 +360,7 @@ impl Cedrus {
 
         let policy_set = PolicySet {
             static_policies: policies,
-            templates: templates,
+            templates,
             template_links: template_links.into_values().collect(),
         };
 
@@ -407,7 +407,7 @@ impl Cedrus {
 
         let policy_set = PolicySet {
             static_policies: policies,
-            templates: templates,
+            templates,
             template_links: template_links.into_values().collect(),
         };
 
@@ -518,10 +518,8 @@ impl Cedrus {
 
             let cedar_context = match context {
                 Some(value) => {
-                    let context_schema = match cedar_schema.as_ref() {
-                        Some(schema) => Some((schema, &cedar_action)),
-                        _ => None,
-                    };
+                    let context_schema =
+                        cedar_schema.as_ref().map(|schema| (schema, &cedar_action));
                     value.to_cedar_context(context_schema)?
                 }
                 _ => cedar_policy::Context::empty(),
@@ -576,10 +574,8 @@ impl Cedrus {
 
                 let cedar_context = match request.context {
                     Some(value) => {
-                        let context_schema = match cedar_schema.as_ref() {
-                            Some(schema) => Some((schema, &cedar_action)),
-                            _ => None,
-                        };
+                        let context_schema =
+                            cedar_schema.as_ref().map(|schema| (schema, &cedar_action));
                         value.to_cedar_context(context_schema)?
                     }
                     _ => cedar_policy::Context::empty(),
@@ -631,9 +627,9 @@ impl Cedrus {
             let mut buf = [0u8; 128];
             rand::fill(&mut buf);
             project.api_keys.push(ApiKey {
-                key: BASE64_STANDARD.encode(buf.to_vec()),
+                key: BASE64_STANDARD.encode(buf),
                 name: "Default API Key".to_string(),
-                project_id: project.id.clone(),
+                project_id: project.id,
                 owner: owner.clone(),
                 created_at: chrono::Utc::now(),
             });
@@ -1046,7 +1042,7 @@ impl Cedrus {
             .project_set_policies(&project_id, &policies)
             .await?;
 
-        let policy_ids = policies.into_keys().into_iter().collect();
+        let policy_ids = policies.into_keys().collect();
         self.publish(Event::project_add_policies(self.id, project_id, policy_ids))
             .await;
 
@@ -1116,7 +1112,7 @@ impl Cedrus {
             .project_set_templates(&project_id, &templates)
             .await?;
 
-        let policy_ids = templates.into_keys().into_iter().collect();
+        let policy_ids = templates.into_keys().collect();
         self.publish(Event::project_add_templates(
             self.id, project_id, policy_ids,
         ))
@@ -1318,7 +1314,7 @@ impl Cedrus {
             EventType::ProjectAddEntities(id, entity_uids) => {
                 let cache_entities = self
                     .cache
-                    .project_get_entities(&id, &Vec::from_iter(entity_uids.clone()))
+                    .project_get_entities(id, &Vec::from_iter(entity_uids.clone()))
                     .await
                     .unwrap_or_default();
                 let _ = self.project_add_entities(id, &cache_entities);
@@ -1327,22 +1323,22 @@ impl Cedrus {
                 let _ = self.project_remove_entities(id, &Vec::from_iter(entity_uids.clone()));
             }
             EventType::ProjectAddPolicies(id, _policy_ids) => {
-                let _ = self.project_set_policy_set(&id).await;
+                let _ = self.project_set_policy_set(id).await;
             }
             EventType::ProjectRemovePolicies(id, _policy_ids) => {
-                let _ = self.project_set_policy_set(&id).await;
+                let _ = self.project_set_policy_set(id).await;
             }
             EventType::ProjectAddTemplates(id, _template_ids) => {
-                let _ = self.project_set_policy_set(&id).await;
+                let _ = self.project_set_policy_set(id).await;
             }
             EventType::ProjectRemoveTemplates(id, _template_ids) => {
-                let _ = self.project_set_policy_set(&id).await;
+                let _ = self.project_set_policy_set(id).await;
             }
             EventType::ProjectAddTemplateLinks(id, _template_link_ids) => {
-                let _ = self.project_set_policy_set(&id).await;
+                let _ = self.project_set_policy_set(id).await;
             }
             EventType::ProjectRemoveTemplateLinks(id, _template_link_ids) => {
-                let _ = self.project_set_policy_set(&id).await;
+                let _ = self.project_set_policy_set(id).await;
             }
         }
     }

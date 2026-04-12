@@ -7,12 +7,12 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-pub const PROJECT_ENTITY_TYPE: &'static str = "Cedrus::Project";
+pub const PROJECT_ENTITY_TYPE: &str = "Cedrus::Project";
 
-const ATTR_OWNER: &'static str = "owner";
-const TAG_NAME: &'static str = "name";
+const ATTR_OWNER: &str = "owner";
+const TAG_NAME: &str = "name";
 
-const TEMPLATE_PROJECT_ADMIN_ROLE: &'static str = "ProjectAdminRole";
+const TEMPLATE_PROJECT_ADMIN_ROLE: &str = "ProjectAdminRole";
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
@@ -82,8 +82,8 @@ impl Project {
         )]);
         let parents = HashSet::new();
         let tags = HashMap::from([(TAG_NAME.to_string(), EntityAttr::String(self.name.clone()))]);
-        let entity = Entity::new_with_tags(uid, attrs, parents, tags);
-        return entity;
+
+        Entity::new_with_tags(uid, attrs, parents, tags)
     }
 
     pub fn template_links(&self) -> Vec<TemplateLink> {
@@ -106,6 +106,6 @@ impl Project {
 
         links.push(admin_project_role);
 
-        return links;
+        links
     }
 }

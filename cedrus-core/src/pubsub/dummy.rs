@@ -4,6 +4,12 @@ use super::{Op, PubSub, PubSubError};
 
 pub struct DummyPubSub;
 
+impl Default for DummyPubSub {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DummyPubSub {
     pub fn new() -> Self {
         Self

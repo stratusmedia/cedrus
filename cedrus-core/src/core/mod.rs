@@ -32,7 +32,7 @@ pub mod is {
             let user_pool_id = self
                 .user_pool_arn
                 .split('/')
-                .last()
+                .next_back()
                 .expect("Invalid user pool ARN")
                 .to_string();
 
@@ -45,7 +45,7 @@ pub mod is {
             let user_pool_id = self
                 .user_pool_arn
                 .split('/')
-                .last()
+                .next_back()
                 .expect("Invalid user pool ARN")
                 .to_string();
 
@@ -57,7 +57,7 @@ pub mod is {
         pub fn prefix(&self) -> String {
             self.user_pool_arn
                 .split('/')
-                .last()
+                .next_back()
                 .expect("Invalid user pool ARN")
                 .to_string()
         }
@@ -147,7 +147,7 @@ impl IdentitySource {
             is::Configuration::CognitoUserPoolConfiguration(config) => config
                 .user_pool_arn
                 .split('/')
-                .last()
+                .next_back()
                 .expect("Invalid user pool ARN")
                 .to_string(),
             is::Configuration::OpenIdConnectConfiguration(config) => {
@@ -184,29 +184,23 @@ impl IdentitySource {
             is::Configuration::CognitoUserPoolConfiguration(_) => {
                 Some("[cognito:groups]".to_string())
             }
-            is::Configuration::OpenIdConnectConfiguration(conf) => {
-                match &conf.group_configuration {
-                    Some(group) => Some(group.group_claim.clone()),
-                    None => None,
-                }
-            }
+            is::Configuration::OpenIdConnectConfiguration(conf) => conf
+                .group_configuration
+                .as_ref()
+                .map(|group| group.group_claim.clone()),
         }
     }
 
     pub fn group_entity_type(&self) -> Option<String> {
         match &self.configuration {
-            is::Configuration::CognitoUserPoolConfiguration(conf) => {
-                match &conf.group_configuration {
-                    Some(group) => Some(group.group_entity_type.clone()),
-                    None => None,
-                }
-            }
-            is::Configuration::OpenIdConnectConfiguration(conf) => {
-                match &conf.group_configuration {
-                    Some(group) => Some(group.group_entity_type.clone()),
-                    None => None,
-                }
-            }
+            is::Configuration::CognitoUserPoolConfiguration(conf) => conf
+                .group_configuration
+                .as_ref()
+                .map(|group| group.group_entity_type.clone()),
+            is::Configuration::OpenIdConnectConfiguration(conf) => conf
+                .group_configuration
+                .as_ref()
+                .map(|group| group.group_entity_type.clone()),
         }
     }
 }

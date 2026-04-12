@@ -7,7 +7,10 @@ use cedrus_cedar::{Entity, EntityUid, Policy, PolicyId, Schema, Template, Templa
 
 use crate::{
     PageHash, PageList, Query, Selector,
-    core::{self, IdentitySource, project::{Project, ApiKey}},
+    core::{
+        self, IdentitySource,
+        project::{ApiKey, Project},
+    },
 };
 
 use super::{Database, DatabaseError};
@@ -39,6 +42,12 @@ pub struct FilterExpression {
     pub values: HashMap<String, AttributeValue>,
 }
 
+impl Default for FilterExpression {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FilterExpression {
     pub fn new() -> FilterExpression {
         FilterExpression {
@@ -67,7 +76,7 @@ impl DynamoDb {
             aws_sdk_dynamodb::Client::from_conf(dynamodb_local_config)
         } else {
             let mut config = aws_config::from_env();
-            if let Ok(_) = std::env::var("CEDRUS_IPV6") {
+            if std::env::var("CEDRUS_IPV6").is_ok() {
                 config = config.use_dual_stack(true);
             }
             aws_sdk_dynamodb::Client::new(&config.load().await)
@@ -82,13 +91,13 @@ impl DynamoDb {
     }
 
     pub async fn init(&self) -> Result<(), Box<dyn std::error::Error>> {
-        if !self
+        if self
             .client
             .describe_table()
             .table_name(&self.table_name)
             .send()
             .await
-            .is_err()
+            .is_ok()
         {
             return Ok(());
         }
@@ -203,7 +212,7 @@ impl DynamoDb {
             AttributeValue::N(project.updated_at.timestamp_millis().to_string()),
         );
 
-        let pk = format!("{}#{}", PROJECT_TYPE, project.id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project.id);
         self.add_indexes_to_item(&mut item, &pk, &pk, PROJECT_TYPE);
 
         Ok(item)
@@ -263,7 +272,7 @@ impl DynamoDb {
             aws_sdk_dynamodb::types::AttributeValue::M(serde_dynamo::to_item(schema)?),
         );
 
-        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id);
         let sk = format!("{}#S", pk);
         self.add_indexes_to_item(&mut item, &pk, &sk, PROJECT_SCHEMA_TYPE);
 
@@ -293,7 +302,7 @@ impl DynamoDb {
         let mut item: HashMap<String, aws_sdk_dynamodb::types::AttributeValue> =
             serde_dynamo::to_item(apikey)?;
 
-        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id);
         let sk = format!("{}#AK#{}", pk, apikey.key);
         self.add_indexes_to_item(&mut item, &pk, &sk, PROJECT_APIKEY_TYPE);
 
@@ -315,7 +324,7 @@ impl DynamoDb {
         let mut item: HashMap<String, aws_sdk_dynamodb::types::AttributeValue> =
             serde_dynamo::to_item(identity_source)?;
 
-        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id);
         let sk = format!("{}#IS", pk);
         self.add_indexes_to_item(&mut item, &pk, &sk, PROJECT_IDENTITY_SOURCE_TYPE);
 
@@ -337,8 +346,8 @@ impl DynamoDb {
         let mut item: HashMap<String, aws_sdk_dynamodb::types::AttributeValue> =
             serde_dynamo::to_item(entity)?;
 
-        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
-        let sk = format!("{}#E#{}", pk, entity.uid().to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id);
+        let sk = format!("{}#E#{}", pk, entity.uid());
         self.add_indexes_to_item(&mut item, &pk, &sk, PROJECT_ENTITY_TYPE);
 
         Ok(item)
@@ -365,8 +374,8 @@ impl DynamoDb {
             aws_sdk_dynamodb::types::AttributeValue::S(policy_id.to_string()),
         );
 
-        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
-        let sk = format!("{}#P#{}", pk, policy_id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id);
+        let sk = format!("{}#P#{}", pk, policy_id);
         self.add_indexes_to_item(&mut item, &pk, &sk, PROJECT_POLICY_TYPE);
 
         Ok(item)
@@ -393,8 +402,8 @@ impl DynamoDb {
             aws_sdk_dynamodb::types::AttributeValue::S(policy_id.to_string()),
         );
 
-        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
-        let sk = format!("{}#T#{}", pk, policy_id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id);
+        let sk = format!("{}#T#{}", pk, policy_id);
         self.add_indexes_to_item(&mut item, &pk, &sk, PROJECT_TEMPLATE_TYPE);
 
         Ok(item)
@@ -415,8 +424,8 @@ impl DynamoDb {
         let mut item: HashMap<String, aws_sdk_dynamodb::types::AttributeValue> =
             serde_dynamo::to_item(link)?;
 
-        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
-        let sk = format!("{}#TL#{}", pk, link.new_id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id);
+        let sk = format!("{}#TL#{}", pk, link.new_id);
         self.add_indexes_to_item(&mut item, &pk, &sk, PROJECT_TEMPLATE_LINK_TYPE);
 
         Ok(item)
@@ -608,7 +617,7 @@ impl Database for DynamoDb {
     }
 
     async fn project_load(&self, id: &Uuid) -> Result<Option<Project>, DatabaseError> {
-        let pk = format!("{}#{}", PROJECT_TYPE, id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, id);
 
         let Some(mut item) = self
             .client
@@ -645,7 +654,7 @@ impl Database for DynamoDb {
     }
 
     async fn project_remove(&self, id: &Uuid) -> Result<(), DatabaseError> {
-        let pk = format!("{}#{}", PROJECT_TYPE, id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, id);
 
         let mut request_items = Vec::new();
 
@@ -685,8 +694,8 @@ impl Database for DynamoDb {
             }
         }
 
-        let pk = format!("{}#{}", PROJECT_TYPE, Uuid::nil().to_string());
-        let sk = format!("{}#TL#{}", pk, id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, Uuid::nil());
+        let sk = format!("{}#TL#{}", pk, id);
         let mut stream = self
             .client
             .query()
@@ -729,7 +738,7 @@ impl Database for DynamoDb {
             crate::core::project::PROJECT_ENTITY_TYPE.to_string(),
             id.to_string(),
         );
-        let sk = format!("{}#E#{}", pk, uid.to_string());
+        let sk = format!("{}#E#{}", pk, uid);
         let request = WriteRequest::builder()
             .delete_request(
                 DeleteRequest::builder()
@@ -762,7 +771,7 @@ impl Database for DynamoDb {
             false => None,
         };
 
-        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id);
         let sk = format!("{}#AK#", pk);
 
         filter.names.insert("#PK".to_string(), PK.to_string());
@@ -841,12 +850,18 @@ impl Database for DynamoDb {
         let mut request_items = Vec::new();
 
         for key in keys {
-            let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
+            let pk = format!("{}#{}", PROJECT_TYPE, project_id);
             let sk = format!("{}#AK#{}", pk, key);
 
             let key_map = vec![
-                (PK.to_string(), aws_sdk_dynamodb::types::AttributeValue::S(pk)),
-                (SK.to_string(), aws_sdk_dynamodb::types::AttributeValue::S(sk)),
+                (
+                    PK.to_string(),
+                    aws_sdk_dynamodb::types::AttributeValue::S(pk),
+                ),
+                (
+                    SK.to_string(),
+                    aws_sdk_dynamodb::types::AttributeValue::S(sk),
+                ),
             ]
             .into_iter()
             .collect();
@@ -873,7 +888,7 @@ impl Database for DynamoDb {
         &self,
         project_id: &Uuid,
     ) -> Result<Option<IdentitySource>, DatabaseError> {
-        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id);
         let sk = format!("{}#IS", pk);
 
         let Some(item) = self
@@ -915,7 +930,7 @@ impl Database for DynamoDb {
     }
 
     async fn project_identity_source_remove(&self, project_id: &Uuid) -> Result<(), DatabaseError> {
-        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id);
         let sk = format!("{}#IS", pk);
 
         self.client
@@ -937,7 +952,7 @@ impl Database for DynamoDb {
         &self,
         project_id: &Uuid,
     ) -> Result<Option<Schema>, DatabaseError> {
-        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id);
         let sk = format!("{}#S", pk);
 
         let Some(item) = self
@@ -979,7 +994,7 @@ impl Database for DynamoDb {
     }
 
     async fn project_schema_remove(&self, project_id: &Uuid) -> Result<(), DatabaseError> {
-        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id);
         let sk = format!("{}#S", pk);
 
         self.client
@@ -1013,7 +1028,7 @@ impl Database for DynamoDb {
             false => None,
         };
 
-        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id);
         let sk = format!("{}#E#", pk);
 
         filter.names.insert("#PK".to_string(), PK.to_string());
@@ -1092,8 +1107,8 @@ impl Database for DynamoDb {
         let mut request_items = Vec::new();
 
         for uid in entity_uids {
-            let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
-            let sk = format!("{}#E#{}", pk, uid.to_string());
+            let pk = format!("{}#{}", PROJECT_TYPE, project_id);
+            let sk = format!("{}#E#{}", pk, uid);
 
             let request = WriteRequest::builder()
                 .delete_request(
@@ -1129,7 +1144,7 @@ impl Database for DynamoDb {
             false => None,
         };
 
-        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id);
         let sk = format!("{}#P#", pk);
 
         filter.names.insert("#PK".to_string(), PK.to_string());
@@ -1217,8 +1232,8 @@ impl Database for DynamoDb {
         let mut request_items = Vec::new();
 
         for policy_id in policy_ids {
-            let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
-            let sk = format!("{}#P#{}", pk, policy_id.to_string());
+            let pk = format!("{}#{}", PROJECT_TYPE, project_id);
+            let sk = format!("{}#P#{}", pk, policy_id);
 
             let request = WriteRequest::builder()
                 .delete_request(
@@ -1254,7 +1269,7 @@ impl Database for DynamoDb {
             false => None,
         };
 
-        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id);
         let sk = format!("{}#T#", pk);
 
         filter.names.insert("#PK".to_string(), PK.to_string());
@@ -1344,8 +1359,8 @@ impl Database for DynamoDb {
         let mut request_items = Vec::new();
 
         for template_id in template_ids {
-            let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
-            let sk = format!("{}#T#{}", pk, template_id.to_string());
+            let pk = format!("{}#{}", PROJECT_TYPE, project_id);
+            let sk = format!("{}#T#{}", pk, template_id);
 
             let request = WriteRequest::builder()
                 .delete_request(
@@ -1381,7 +1396,7 @@ impl Database for DynamoDb {
             false => None,
         };
 
-        let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
+        let pk = format!("{}#{}", PROJECT_TYPE, project_id);
         let sk = format!("{}#TL#", pk);
 
         filter.names.insert("#PK".to_string(), PK.to_string());
@@ -1462,8 +1477,8 @@ impl Database for DynamoDb {
         let mut request_items = Vec::new();
 
         for new_id in link_ids {
-            let pk = format!("{}#{}", PROJECT_TYPE, project_id.to_string());
-            let sk = format!("{}#TL#{}", pk, new_id.to_string());
+            let pk = format!("{}#{}", PROJECT_TYPE, project_id);
+            let sk = format!("{}#TL#{}", pk, new_id);
 
             let request = WriteRequest::builder()
                 .delete_request(

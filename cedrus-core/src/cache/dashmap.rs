@@ -20,6 +20,12 @@ pub struct DashMapCache {
     template_links: DashMap<(Uuid, PolicyId), TemplateLink>,
 }
 
+impl Default for DashMapCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DashMapCache {
     pub fn new() -> Self {
         Self {

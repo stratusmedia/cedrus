@@ -11,7 +11,10 @@ use cedrus_cedar::{Entity, EntityUid, Policy, PolicyId, Schema, Template, Templa
 
 use crate::{
     PageHash, PageList, Query,
-    core::{self, IdentitySource, project::{Project, ApiKey}},
+    core::{
+        self, IdentitySource,
+        project::{ApiKey, Project},
+    },
 };
 
 use super::{Database, DatabaseError};
@@ -77,7 +80,7 @@ impl CouchDb {
     }
 
     fn project_id(project_id: &Uuid) -> String {
-        format!("{}#{}", PROJECT_TYPE, project_id.to_string())
+        format!("{}#{}", PROJECT_TYPE, project_id)
     }
 
     fn project_to_value(project: &Project) -> Result<Value, DatabaseError> {
@@ -102,13 +105,10 @@ impl CouchDb {
     }
 
     fn project_apikey_id(project_id: &Uuid, key: &str) -> String {
-        format!("{}#{}#{}", PROJECT_APIKEY_TYPE, project_id.to_string(), key)
+        format!("{}#{}#{}", PROJECT_APIKEY_TYPE, project_id, key)
     }
 
-    fn project_apikey_to_value(
-        project_id: &Uuid,
-        apikey: &ApiKey,
-    ) -> Result<Value, DatabaseError> {
+    fn project_apikey_to_value(project_id: &Uuid, apikey: &ApiKey) -> Result<Value, DatabaseError> {
         let id = Self::project_apikey_id(project_id, &apikey.key);
         let mut value = serde_json::to_value(apikey)?;
         if let Some(obj) = value.as_object_mut() {
@@ -130,11 +130,7 @@ impl CouchDb {
     }
 
     fn project_identity_source_id(project_id: &Uuid) -> String {
-        format!(
-            "{}#{}",
-            PROJECT_IDENTITY_SOURCE_TYPE,
-            project_id.to_string()
-        )
+        format!("{}#{}", PROJECT_IDENTITY_SOURCE_TYPE, project_id)
     }
 
     fn project_identity_source_to_value(
@@ -162,7 +158,7 @@ impl CouchDb {
     }
 
     fn project_schema_id(project_id: &Uuid) -> String {
-        format!("{}#{}", PROJECT_SCHEMA_TYPE, project_id.to_string())
+        format!("{}#{}", PROJECT_SCHEMA_TYPE, project_id)
     }
 
     fn project_schema_to_value(project_id: &Uuid, schema: &Schema) -> Result<Value, DatabaseError> {
@@ -185,16 +181,11 @@ impl CouchDb {
     }
 
     fn project_entity_id(project_id: &Uuid, entity_uid: &EntityUid) -> String {
-        format!(
-            "{}#{}#{}",
-            PROJECT_ENTITY_TYPE,
-            project_id,
-            entity_uid.to_string()
-        )
+        format!("{}#{}#{}", PROJECT_ENTITY_TYPE, project_id, entity_uid)
     }
 
     fn project_entity_to_value(project_id: &Uuid, entity: &Entity) -> Result<Value, DatabaseError> {
-        let id = Self::project_entity_id(project_id, &entity.uid());
+        let id = Self::project_entity_id(project_id, entity.uid());
         let mut value = serde_json::to_value(entity)?;
         if let Some(obj) = value.as_object_mut() {
             obj.insert(ID_KEY.to_string(), Value::String(id.to_string()));
@@ -215,12 +206,7 @@ impl CouchDb {
     }
 
     fn project_policy_id(project_id: &Uuid, policy_id: &PolicyId) -> String {
-        format!(
-            "{}#{}#{}",
-            PROJECT_POLICY_TYPE,
-            project_id,
-            policy_id.to_string()
-        )
+        format!("{}#{}#{}", PROJECT_POLICY_TYPE, project_id, policy_id)
     }
 
     fn project_policy_to_value(
@@ -253,12 +239,7 @@ impl CouchDb {
     }
 
     fn project_template_id(project_id: &Uuid, policy_id: &PolicyId) -> String {
-        format!(
-            "{}#{}#{}",
-            PROJECT_TEMPLATE_TYPE,
-            project_id,
-            policy_id.to_string()
-        )
+        format!("{}#{}#{}", PROJECT_TEMPLATE_TYPE, project_id, policy_id)
     }
 
     fn project_template_to_value(
@@ -291,12 +272,7 @@ impl CouchDb {
     }
 
     fn project_template_link_id(project_id: &Uuid, new_id: &PolicyId) -> String {
-        format!(
-            "{}#{}#{}",
-            PROJECT_TEMPLATE_LINK_TYPE,
-            project_id,
-            new_id.to_string()
-        )
+        format!("{}#{}#{}", PROJECT_TEMPLATE_LINK_TYPE, project_id, new_id)
     }
 
     fn project_template_link_to_value(
@@ -376,7 +352,7 @@ impl Database for CouchDb {
     async fn project_load(&self, id: &Uuid) -> Result<Option<Project>, DatabaseError> {
         let id = Self::project_id(id);
         let db = self.client.db(&self.db_name).await?;
-        if let Some(doc) = db.get::<Value>(&id).await.ok() {
+        if let Ok(doc) = db.get::<Value>(&id).await {
             return Ok(Some(Self::project_from_value(doc)?));
         }
 
@@ -394,14 +370,18 @@ impl Database for CouchDb {
     async fn project_remove(&self, id: &Uuid) -> Result<(), DatabaseError> {
         let id = Self::project_id(id);
         let db = self.client.db(&self.db_name).await?;
-        if let Some(doc) = db.get::<Value>(&id).await.ok() {
+        if let Ok(doc) = db.get::<Value>(&id).await {
             let _ = db.remove(&doc).await;
         }
 
         Ok(())
     }
 
-    async fn project_apikeys_load(&self, project_id: &Uuid, query: &Query) -> Result<PageList<ApiKey>, DatabaseError> {
+    async fn project_apikeys_load(
+        &self,
+        project_id: &Uuid,
+        query: &Query,
+    ) -> Result<PageList<ApiKey>, DatabaseError> {
         let db = self.client.db(&self.db_name).await?;
         let find = Self::query_to_find_query(query, PROJECT_APIKEY_TYPE, project_id)?;
         let docs = db.find_raw(&find).await?;
@@ -428,11 +408,15 @@ impl Database for CouchDb {
         Ok(())
     }
 
-    async fn project_apikeys_remove(&self, project_id: &Uuid, keys: &Vec<String>) -> Result<(), DatabaseError> {
+    async fn project_apikeys_remove(
+        &self,
+        project_id: &Uuid,
+        keys: &Vec<String>,
+    ) -> Result<(), DatabaseError> {
         let db = self.client.db(&self.db_name).await?;
         for key in keys {
             let id = Self::project_apikey_id(project_id, key);
-            if let Some(doc) = db.get::<Value>(&id).await.ok() {
+            if let Ok(doc) = db.get::<Value>(&id).await {
                 let _ = db.remove(&doc).await;
             }
         }
@@ -446,7 +430,7 @@ impl Database for CouchDb {
     ) -> Result<Option<IdentitySource>, DatabaseError> {
         let id = Self::project_identity_source_id(project_id);
         let db = self.client.db(&self.db_name).await?;
-        if let Some(doc) = db.get::<Value>(&id).await.ok() {
+        if let Ok(doc) = db.get::<Value>(&id).await {
             return Ok(Some(Self::project_identity_source_from_value(doc)?));
         }
         Ok(None)
@@ -467,7 +451,7 @@ impl Database for CouchDb {
     async fn project_identity_source_remove(&self, project_id: &Uuid) -> Result<(), DatabaseError> {
         let id = Self::project_identity_source_id(project_id);
         let db = self.client.db(&self.db_name).await?;
-        if let Some(doc) = db.get::<Value>(&id).await.ok() {
+        if let Ok(doc) = db.get::<Value>(&id).await {
             let _ = db.remove(&doc).await;
         }
 
@@ -480,7 +464,7 @@ impl Database for CouchDb {
     ) -> Result<Option<Schema>, DatabaseError> {
         let id = Self::project_schema_id(project_id);
         let db = self.client.db(&self.db_name).await?;
-        if let Some(doc) = db.get::<Value>(&id).await.ok() {
+        if let Ok(doc) = db.get::<Value>(&id).await {
             return Ok(Some(Self::project_schema_from_value(doc)?));
         }
         Ok(None)
@@ -501,7 +485,7 @@ impl Database for CouchDb {
     async fn project_schema_remove(&self, project_id: &Uuid) -> Result<(), DatabaseError> {
         let id = Self::project_schema_id(project_id);
         let db = self.client.db(&self.db_name).await?;
-        if let Some(doc) = db.get::<Value>(&id).await.ok() {
+        if let Ok(doc) = db.get::<Value>(&id).await {
             let _ = db.remove(&doc).await;
         }
 
@@ -532,7 +516,7 @@ impl Database for CouchDb {
     ) -> Result<(), DatabaseError> {
         let db = self.client.db(&self.db_name).await?;
         for entity in entities {
-            let mut value = Self::project_entity_to_value(&project_id, entity)?;
+            let mut value = Self::project_entity_to_value(project_id, entity)?;
             db.upsert(&mut value).await?;
         }
 
@@ -546,8 +530,8 @@ impl Database for CouchDb {
     ) -> Result<(), DatabaseError> {
         let db = self.client.db(&self.db_name).await?;
         for entity_uid in entity_uids {
-            let id = Self::project_entity_id(&project_id, entity_uid);
-            if let Some(doc) = db.get::<Value>(&id).await.ok() {
+            let id = Self::project_entity_id(project_id, entity_uid);
+            if let Ok(doc) = db.get::<Value>(&id).await {
                 let _ = db.remove(&doc).await;
             }
         }
@@ -566,13 +550,13 @@ impl Database for CouchDb {
 
         let mut datas = HashMap::new();
         for doc in docs.rows {
-            if let Some(policy_id) = doc.get(POLICY_ID_KEY) {
-                if let Some(policy_id) = policy_id.as_str() {
-                    datas.insert(
-                        policy_id.to_string().into(),
-                        Self::project_policy_from_value(doc)?,
-                    );
-                }
+            if let Some(policy_id) = doc.get(POLICY_ID_KEY)
+                && let Some(policy_id) = policy_id.as_str()
+            {
+                datas.insert(
+                    policy_id.to_string().into(),
+                    Self::project_policy_from_value(doc)?,
+                );
             }
         }
 
@@ -586,7 +570,7 @@ impl Database for CouchDb {
     ) -> Result<(), DatabaseError> {
         let db = self.client.db(&self.db_name).await?;
         for (policy_id, policy) in policies {
-            let mut value = Self::project_policy_to_value(&project_id, policy_id, policy)?;
+            let mut value = Self::project_policy_to_value(project_id, policy_id, policy)?;
             db.upsert(&mut value).await?;
         }
 
@@ -600,8 +584,8 @@ impl Database for CouchDb {
     ) -> Result<(), DatabaseError> {
         let db = self.client.db(&self.db_name).await?;
         for policy_id in policy_ids {
-            let id = Self::project_policy_id(&project_id, policy_id);
-            if let Some(doc) = db.get::<Value>(&id).await.ok() {
+            let id = Self::project_policy_id(project_id, policy_id);
+            if let Ok(doc) = db.get::<Value>(&id).await {
                 let _ = db.remove(&doc).await;
             }
         }
@@ -620,13 +604,13 @@ impl Database for CouchDb {
 
         let mut datas = HashMap::new();
         for doc in docs.rows {
-            if let Some(policy_id) = doc.get(POLICY_ID_KEY) {
-                if let Some(policy_id) = policy_id.as_str() {
-                    datas.insert(
-                        policy_id.to_string().into(),
-                        Self::project_template_from_value(doc)?,
-                    );
-                }
+            if let Some(policy_id) = doc.get(POLICY_ID_KEY)
+                && let Some(policy_id) = policy_id.as_str()
+            {
+                datas.insert(
+                    policy_id.to_string().into(),
+                    Self::project_template_from_value(doc)?,
+                );
             }
         }
 
@@ -640,7 +624,7 @@ impl Database for CouchDb {
     ) -> Result<(), DatabaseError> {
         let db = self.client.db(&self.db_name).await?;
         for (template_id, template) in templates {
-            let mut value = Self::project_template_to_value(&project_id, template_id, template)?;
+            let mut value = Self::project_template_to_value(project_id, template_id, template)?;
             db.upsert(&mut value).await?;
         }
 
@@ -654,8 +638,8 @@ impl Database for CouchDb {
     ) -> Result<(), DatabaseError> {
         let db = self.client.db(&self.db_name).await?;
         for template_id in template_ids {
-            let id = Self::project_template_id(&project_id, template_id);
-            if let Some(doc) = db.get::<Value>(&id).await.ok() {
+            let id = Self::project_template_id(project_id, template_id);
+            if let Ok(doc) = db.get::<Value>(&id).await {
                 let _ = db.remove(&doc).await;
             }
         }
@@ -687,7 +671,7 @@ impl Database for CouchDb {
     ) -> Result<(), DatabaseError> {
         let db = self.client.db(&self.db_name).await?;
         for template_link in template_links {
-            let mut value = Self::project_template_link_to_value(&project_id, template_link)?;
+            let mut value = Self::project_template_link_to_value(project_id, template_link)?;
             db.upsert(&mut value).await?;
         }
 
@@ -701,8 +685,8 @@ impl Database for CouchDb {
     ) -> Result<(), DatabaseError> {
         let db = self.client.db(&self.db_name).await?;
         for new_id in link_ids {
-            let id = Self::project_template_link_id(&project_id, new_id);
-            if let Some(doc) = db.get::<Value>(&id).await.ok() {
+            let id = Self::project_template_link_id(project_id, new_id);
+            if let Ok(doc) = db.get::<Value>(&id).await {
                 let _ = db.remove(&doc).await;
             }
         }

@@ -37,7 +37,7 @@ pub async fn pubsub_factory(
     conf: &PubSubConfig,
 ) -> Result<Box<dyn PubSub + Send + Sync>, PubSubError> {
     let pubsub: Box<dyn PubSub + Send + Sync> = match conf {
-        PubSubConfig::ValKeyConfig(conf) => Box::new(valkey::ValKeyPubSub::new(&conf).await?),
+        PubSubConfig::ValKeyConfig(conf) => Box::new(valkey::ValKeyPubSub::new(conf).await?),
         PubSubConfig::DummyConfig(_) => Box::new(dummy::DummyPubSub::new()),
     };
 

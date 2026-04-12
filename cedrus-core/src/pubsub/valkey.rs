@@ -29,7 +29,7 @@ impl ValKeyPubSub {
                 .map_err(|_| PubSubError::Connection)?;
             ConnectionType::Cluster(conn)
         } else {
-            let url = conf.urls.get(0).ok_or(PubSubError::Connection)?;
+            let url = conf.urls.first().ok_or(PubSubError::Connection)?;
             let client = redis::Client::open(url.clone()).map_err(|_| PubSubError::Connection)?;
             let conn = client
                 .get_multiplexed_async_connection()
@@ -55,7 +55,7 @@ impl PubSub for ValKeyPubSub {
             ConnectionType::Multiplexed(_) => {
                 let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
-                let url = self.urls.get(0).ok_or(PubSubError::Connection)?;
+                let url = self.urls.first().ok_or(PubSubError::Connection)?;
                 let config = redis::AsyncConnectionConfig::new().set_push_sender(tx);
                 let client =
                     redis::Client::open(url.clone()).map_err(|_| PubSubError::Connection)?;
@@ -69,27 +69,21 @@ impl PubSub for ValKeyPubSub {
                     .map_err(|_| PubSubError::Connection)?;
 
                 while let Some(msg) = rx.recv().await {
-                    match msg.kind {
-                        redis::PushKind::Message => {
-                            let Some(message) = msg.data.get(1) else {
+                    if msg.kind == redis::PushKind::Message {
+                        let Some(message) = msg.data.get(1) else {
+                            continue;
+                        };
+                        if let redis::Value::BulkString(data) = message {
+                            let Ok(str) = String::from_utf8(data.clone()) else {
                                 continue;
                             };
-                            match message {
-                                redis::Value::BulkString(data) => {
-                                    let Ok(str) = String::from_utf8(data.clone()) else {
-                                        continue;
-                                    };
-                                    let Ok(message) = serde_json::from_str::<Event>(&str) else {
-                                        continue;
-                                    };
-                                    for op in ops {
-                                        op(message.clone()).await;
-                                    }
-                                }
-                                _ => {}
+                            let Ok(message) = serde_json::from_str::<Event>(&str) else {
+                                continue;
+                            };
+                            for op in ops {
+                                op(message.clone()).await;
                             }
                         }
-                        _ => {}
                     }
                 }
             }
@@ -111,27 +105,21 @@ impl PubSub for ValKeyPubSub {
                     .map_err(|_| PubSubError::Connection)?;
 
                 while let Some(msg) = rx.recv().await {
-                    match msg.kind {
-                        redis::PushKind::Message => {
-                            let Some(message) = msg.data.get(1) else {
+                    if msg.kind == redis::PushKind::Message {
+                        let Some(message) = msg.data.get(1) else {
+                            continue;
+                        };
+                        if let redis::Value::BulkString(data) = message {
+                            let Ok(str) = String::from_utf8(data.clone()) else {
                                 continue;
                             };
-                            match message {
-                                redis::Value::BulkString(data) => {
-                                    let Ok(str) = String::from_utf8(data.clone()) else {
-                                        continue;
-                                    };
-                                    let Ok(message) = serde_json::from_str::<Event>(&str) else {
-                                        continue;
-                                    };
-                                    for op in ops {
-                                        op(message.clone()).await;
-                                    }
-                                }
-                                _ => {}
+                            let Ok(message) = serde_json::from_str::<Event>(&str) else {
+                                continue;
+                            };
+                            for op in ops {
+                                op(message.clone()).await;
                             }
                         }
-                        _ => {}
                     }
                 }
             }

@@ -37,9 +37,9 @@ impl std::fmt::Display for DatabaseError {
             DatabaseError::ConnectionError(e) => write!(f, "connection error: {}", e),
             DatabaseError::MissingAttribute(a) => write!(f, "missing attribute: {}", a),
             DatabaseError::InvalidAttribute(a) => write!(f, "invalid attribute: {}", a),
-            DatabaseError::JsonErro(e) => write!(f, "json error: {}", e.to_string()),
+            DatabaseError::JsonErro(e) => write!(f, "json error: {}", e),
             DatabaseError::CouchError(e) => write!(f, "couch error: {}", e),
-            DatabaseError::SerdeDynamoError(e) => write!(f, "dynamodb error: {}", e.to_string()),
+            DatabaseError::SerdeDynamoError(e) => write!(f, "dynamodb error: {}", e),
             DatabaseError::AwsSdkError(e) => write!(f, "aws sdk error: {}", e),
             DatabaseError::SerializationError(e) => write!(f, "serialization error: {}", e),
         }
@@ -178,9 +178,9 @@ pub async fn database_factory(
     conf: &DbConfig,
 ) -> Result<Box<dyn Database + Send + Sync>, DatabaseError> {
     let db: Box<dyn Database + Send + Sync> = match conf {
-        DbConfig::DynamoDbConfig(conf) => Box::new(dynamodb::DynamoDb::new(&conf).await?),
+        DbConfig::DynamoDbConfig(conf) => Box::new(dynamodb::DynamoDb::new(conf).await?),
         DbConfig::CouchDbConfig(conf) => {
-            let db = couchdb::CouchDb::new(&conf)?;
+            let db = couchdb::CouchDb::new(conf)?;
             db.init()
                 .await
                 .map_err(|e| DatabaseError::ConnectionError(e.to_string()))?;

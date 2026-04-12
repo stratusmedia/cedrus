@@ -348,7 +348,7 @@ impl From<Query> for QueryParams {
             fields: query.fields.len().ne(&0).then(|| query.fields),
             */
             start_key: query.start_key,
-            limit: query.limit.ge(&0).then(|| query.limit),
+            limit: query.limit.ge(&0).then_some(query.limit),
             /*
             skip: query.skip.ge(&0).then(|| query.skip),
             index: query.index,
@@ -357,14 +357,14 @@ impl From<Query> for QueryParams {
     }
 }
 
-impl Into<Query> for QueryParams {
-    fn into(self) -> Query {
+impl From<QueryParams> for Query {
+    fn from(val: QueryParams) -> Self {
         Query {
-            selector: self.selector,
+            selector: val.selector,
             sort: Vec::new(),   // self.sort.unwrap_or_default(),
             fields: Vec::new(), // self.fields.unwrap_or_default(),
-            start_key: self.start_key,
-            limit: self.limit.unwrap_or(0),
+            start_key: val.start_key,
+            limit: val.limit.unwrap_or(0),
             skip: 0,     // self.skip.unwrap_or(0),
             index: None, //self.index,
         }

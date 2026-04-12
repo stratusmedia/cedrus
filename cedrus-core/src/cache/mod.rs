@@ -142,7 +142,7 @@ pub async fn cache_factory(
 ) -> Result<Box<dyn Cache + Send + Sync>, CacheError> {
     let cache: Box<dyn Cache + Send + Sync> = match conf {
         crate::core::CacheConfig::ValKeyConfig(conf) => {
-            Box::new(valkey::ValKeyCache::new(&conf).await?)
+            Box::new(valkey::ValKeyCache::new(conf).await?)
         }
         crate::core::CacheConfig::DashMapConfig(_) => Box::new(dashmap::DashMapCache::new()),
     };

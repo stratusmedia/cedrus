@@ -133,7 +133,7 @@ impl ValKeyCache {
                 .map_err(|_e| CacheError::Connection)?;
             ConnectionType::Cluster(conn)
         } else {
-            let url = conf.urls.get(0).ok_or(CacheError::Connection)?;
+            let url = conf.urls.first().ok_or(CacheError::Connection)?;
             let client = redis::Client::open(url.clone()).map_err(|_e| CacheError::Connection)?;
             let config = redis::AsyncConnectionConfig::new()
                 .set_connection_timeout(Some(Duration::from_secs(300)));
@@ -159,32 +159,32 @@ impl ValKeyCache {
         format!("cedrus:p:{}:e:*", project_id)
     }
     fn entities_key(&self, project_id: &Uuid, entity_uid: &EntityUid) -> String {
-        format!("cedrus:p:{}:e:{}", project_id, entity_uid.to_string())
+        format!("cedrus:p:{}:e:{}", project_id, entity_uid)
     }
 
     fn policies_pattern(&self, project_id: &Uuid) -> String {
         format!("cedrus:p:{}:p:*", project_id)
     }
     fn policies_key(&self, project_id: &Uuid, policy_id: &PolicyId) -> String {
-        format!("cedrus:p:{}:p:{}", project_id, policy_id.to_string())
+        format!("cedrus:p:{}:p:{}", project_id, policy_id)
     }
 
     fn templates_pattern(&self, project_id: &Uuid) -> String {
         format!("cedrus:p:{}:t:*", project_id)
     }
     fn templates_key(&self, project_id: &Uuid, policy_id: &PolicyId) -> String {
-        format!("cedrus:p:{}:t:{}", project_id, policy_id.to_string())
+        format!("cedrus:p:{}:t:{}", project_id, policy_id)
     }
 
     fn template_links_pattern(&self, project_id: &Uuid) -> String {
         format!("cedrus:p:{}:tl:*", project_id)
     }
     fn template_links_key(&self, project_id: &Uuid, policy_id: &PolicyId) -> String {
-        format!("cedrus:p:{}:tl:{}", project_id, policy_id.to_string())
+        format!("cedrus:p:{}:tl:{}", project_id, policy_id)
     }
 
     fn project_pattern(&self) -> String {
-        format!("cedrus:prj:*")
+        "cedrus:prj:*".to_string()
     }
     fn project_key(&self, project_id: &Uuid) -> String {
         format!("cedrus:prj:{}", project_id)
@@ -214,7 +214,7 @@ impl ValKeyCache {
 #[async_trait::async_trait]
 impl Cache for ValKeyCache {
     async fn project_clear(&self, project_id: &Uuid) -> Result<(), CacheError> {
-        let pattern = format!("cedrus:p:{}:*", project_id.to_string());
+        let pattern = format!("cedrus:p:{}:*", project_id);
         let mut keys = self.keys_from_pattern(&pattern).await?;
 
         keys.push(self.project_key(project_id));
@@ -233,12 +233,10 @@ impl Cache for ValKeyCache {
 
         let mut projects = Vec::new();
         let vals = self.conn.mget(&keys).await?;
-        for val in vals {
-            if let Some(val) = val {
-                let project =
-                    serde_json::from_str(&val).map_err(|e| CacheError::JsonError(e.to_string()))?;
-                projects.push(project);
-            }
+        for val in vals.into_iter().flatten() {
+            let project =
+                serde_json::from_str(&val).map_err(|e| CacheError::JsonError(e.to_string()))?;
+            projects.push(project);
         }
 
         Ok(projects)
@@ -267,16 +265,16 @@ impl Cache for ValKeyCache {
     }
 
     async fn project_del(&self, project_id: &Uuid) -> Result<(), CacheError> {
-        let pattern = format!("cedrus:p:{}:*", project_id.to_string());
+        let pattern = format!("cedrus:p:{}:*", project_id);
         let mut keys = self.keys_from_pattern(&pattern).await?;
 
         keys.push(self.project_key(project_id));
 
         let uid = EntityUid::new(PROJECT_ENTITY_TYPE.to_string(), project_id.to_string());
-        let key = format!("cedrus:p:{}:e:{}", Uuid::nil(), uid.to_string());
+        let key = format!("cedrus:p:{}:e:{}", Uuid::nil(), uid);
         keys.push(key);
 
-        let pattern = format!("cedrus:p:{}:tl:{}_*", Uuid::nil(), project_id.to_string());
+        let pattern = format!("cedrus:p:{}:tl:{}_*", Uuid::nil(), project_id);
         let mut tls = self.keys_from_pattern(&pattern).await?;
         keys.append(&mut tls);
 
@@ -381,11 +379,9 @@ impl Cache for ValKeyCache {
 
         let mut entities = Vec::new();
         let vals = self.conn.mget(&keys).await?;
-        for val in vals {
-            if let Some(val) = val {
-                let entity = self.entity_from_val(val)?;
-                entities.push(entity);
-            }
+        for val in vals.into_iter().flatten() {
+            let entity = self.entity_from_val(val)?;
+            entities.push(entity);
         }
 
         Ok(entities)
@@ -448,13 +444,13 @@ impl Cache for ValKeyCache {
         let mut policies = HashMap::new();
         let vals = self.conn.mget(&keys).await?;
         for (i, val) in vals.iter().enumerate() {
-            if let Some(val) = val {
-                if let Some(policy_id_str) = keys[i].split(':').last() {
-                    let policy_id = PolicyId::from(policy_id_str.to_string());
-                    let policy: Policy = serde_json::from_str(&val)
-                        .map_err(|e| CacheError::JsonError(e.to_string()))?;
-                    policies.insert(policy_id, policy);
-                }
+            if let Some(val) = val
+                && let Some(policy_id_str) = keys[i].split(':').next_back()
+            {
+                let policy_id = PolicyId::from(policy_id_str.to_string());
+                let policy: Policy =
+                    serde_json::from_str(val).map_err(|e| CacheError::JsonError(e.to_string()))?;
+                policies.insert(policy_id, policy);
             }
         }
 
@@ -516,13 +512,13 @@ impl Cache for ValKeyCache {
         let mut templates = HashMap::new();
         let vals = self.conn.mget(&keys).await?;
         for (i, val) in vals.iter().enumerate() {
-            if let Some(val) = val {
-                if let Some(policy_id_str) = keys[i].split(':').last() {
-                    let policy_id = PolicyId::from(policy_id_str.to_string());
-                    let template: Template = serde_json::from_str(&val)
-                        .map_err(|e| CacheError::JsonError(e.to_string()))?;
-                    templates.insert(policy_id, template);
-                }
+            if let Some(val) = val
+                && let Some(policy_id_str) = keys[i].split(':').next_back()
+            {
+                let policy_id = PolicyId::from(policy_id_str.to_string());
+                let template: Template =
+                    serde_json::from_str(val).map_err(|e| CacheError::JsonError(e.to_string()))?;
+                templates.insert(policy_id, template);
             }
         }
 
@@ -584,12 +580,10 @@ impl Cache for ValKeyCache {
 
         let mut template_links = Vec::new();
         let vals = self.conn.mget(&keys).await?;
-        for val in vals {
-            if let Some(val) = val {
-                let template_link: TemplateLink =
-                    serde_json::from_str(&val).map_err(|e| CacheError::JsonError(e.to_string()))?;
-                template_links.push(template_link);
-            }
+        for val in vals.into_iter().flatten() {
+            let template_link: TemplateLink =
+                serde_json::from_str(&val).map_err(|e| CacheError::JsonError(e.to_string()))?;
+            template_links.push(template_link);
         }
 
         Ok(template_links)

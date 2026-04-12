@@ -1,4 +1,6 @@
 #![doc = include_str!("../README.md")]
+#![allow(clippy::result_large_err)]
+#![allow(clippy::ptr_arg)]
 
 use std::{
     collections::{HashMap, HashSet},
@@ -25,7 +27,7 @@ use crate::{
 };
 
 pub const DEFAULT_LIMIT: usize = 1000;
-const TEMPLATE_PROJECT_ADMIN_ROLE: &'static str = "ProjectAdminRole";
+const TEMPLATE_PROJECT_ADMIN_ROLE: &str = "ProjectAdminRole";
 
 pub struct Authorizer {
     pub identity_source: IdentitySource,
@@ -79,7 +81,7 @@ impl Authorizer {
                             let group_id = v.as_str().ok_or(CedrusError::Unauthorized)?;
                             Ok(EntityUid::new(
                                 group_entity_type.to_string(),
-                                format!("{}", group_id),
+                                group_id.to_string(),
                             ))
                         })
                         .collect::<Result<HashSet<EntityUid>, CedrusError>>()
@@ -321,9 +323,10 @@ impl CedrusActions {
             CedrusActions::GetProjectApiKey => {
                 EntityUid::new("Cedrus::Action".to_string(), "getProjectApiKey".to_string())
             }
-            CedrusActions::PostProjectApiKey => {
-                EntityUid::new("Cedrus::Action".to_string(), "postProjectApiKey".to_string())
-            }
+            CedrusActions::PostProjectApiKey => EntityUid::new(
+                "Cedrus::Action".to_string(),
+                "postProjectApiKey".to_string(),
+            ),
             CedrusActions::PutProjectApiKey => {
                 EntityUid::new("Cedrus::Action".to_string(), "putProjectApiKey".to_string())
             }
