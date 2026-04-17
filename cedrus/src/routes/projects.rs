@@ -1626,10 +1626,11 @@ async fn projects_id_is_authorized_batch_post(
     get,
     path = "/v1/projects/{id}/apikeys",
     params(
-        ("id" = Uuid, Path, description = "Project id")
+        ("id" = Uuid, Path, description = "Project id"),
+        QueryParams,
     ),
     responses(
-        (status = 200, description = "API Keys list", body = Vec<ApiKey>)
+        (status = 200, description = "API Keys list", body = PageList<ApiKey>)
     ),
     security(
         ("bearerAuth" = []),
@@ -1641,7 +1642,8 @@ async fn projects_id_apikeys_get(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
-) -> Result<AppJson<Vec<ApiKey>>, AppError> {
+    Query(query_params): Query<QueryParams>,
+) -> Result<AppJson<PageList<ApiKey>>, AppError> {
     if !state.cedrus.is_allow(
         principal,
         CedrusActions::GetProjectApiKey.value(),
@@ -1650,7 +1652,8 @@ async fn projects_id_apikeys_get(
         return Err(AppError::Forbidden);
     }
 
-    let apikeys = state.cedrus.project_apikeys_find(id).await?;
+    let query = query_params.into();
+    let apikeys = state.cedrus.project_apikeys_find(id, query).await?;
 
     Ok(AppJson(apikeys))
 }
@@ -1678,13 +1681,15 @@ async fn projects_id_apikeys_post(
     Json(apikey): Json<ApiKey>,
 ) -> Result<AppJson<ApiKey>, AppError> {
     if !state.cedrus.is_allow(
-        principal,
+        principal.clone(),
         CedrusActions::PostProjectApiKey.value(),
         Project::entity_uid(id),
     ) {
         return Err(AppError::Forbidden);
     }
 
+    let mut apikey = apikey;
+    apikey.owner = principal;
     let apikey = state.cedrus.project_apikeys_add(id, apikey).await?;
 
     Ok(AppJson(apikey))
@@ -1695,7 +1700,7 @@ async fn projects_id_apikeys_post(
     path = "/v1/projects/{id}/apikeys/{key}",
     params(
         ("id" = Uuid, Path, description = "Project id"),
-        ("key" = String, Path, description = "API key string")
+        ("key" = Uuid, Path, description = "API key id")
     ),
     request_body = ApiKey,
     responses(
@@ -1710,7 +1715,7 @@ async fn projects_id_apikeys_post(
 async fn projects_id_apikeys_key_put(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
-    Path((id, key)): Path<(Uuid, String)>,
+    Path((id, key)): Path<(Uuid, Uuid)>,
     Json(apikey): Json<ApiKey>,
 ) -> Result<AppJson<ApiKey>, AppError> {
     if !state.cedrus.is_allow(
@@ -1721,7 +1726,7 @@ async fn projects_id_apikeys_key_put(
         return Err(AppError::Forbidden);
     }
 
-    if key != apikey.key {
+    if key != apikey.id {
         return Err(AppError::BadRequest);
     }
 
@@ -1735,7 +1740,7 @@ async fn projects_id_apikeys_key_put(
     path = "/v1/projects/{id}/apikeys/{key}",
     params(
         ("id" = Uuid, Path, description = "Project id"),
-        ("key" = String, Path, description = "API key string")
+        ("key" = Uuid, Path, description = "API key id")
     ),
     responses(
         (status = 200, description = "API Key deleted")
@@ -1749,7 +1754,7 @@ async fn projects_id_apikeys_key_put(
 async fn projects_id_apikeys_key_delete(
     Extension(principal): Extension<EntityUid>,
     State(state): State<Arc<AppState>>,
-    Path((id, key)): Path<(Uuid, String)>,
+    Path((id, key)): Path<(Uuid, Uuid)>,
 ) -> Result<(), AppError> {
     if !state.cedrus.is_allow(
         principal,

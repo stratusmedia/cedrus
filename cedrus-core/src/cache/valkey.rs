@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::core::{
     self, IdentitySource,
-    project::{PROJECT_ENTITY_TYPE, Project},
+    project::{ApiKey, PROJECT_ENTITY_TYPE, Project},
 };
 
 use super::{Cache, CacheError};
@@ -147,6 +147,13 @@ impl ValKeyCache {
         Ok(Self { conn })
     }
 
+    fn apikeys_pattern(&self, project_id: &Uuid) -> String {
+        format!("cedrus:p:{}:ak:*", project_id)
+    }
+    fn apikeys_key(&self, project_id: &Uuid, apikey_id: &Uuid) -> String {
+        format!("cedrus:p:{}:ak:{}", project_id, apikey_id)
+    }
+
     fn project_identity_source_key(&self, project_id: &Uuid) -> String {
         format!("cedrus:p:{}:is", project_id)
     }
@@ -277,6 +284,68 @@ impl Cache for ValKeyCache {
         let pattern = format!("cedrus:p:{}:tl:{}_*", Uuid::nil(), project_id);
         let mut tls = self.keys_from_pattern(&pattern).await?;
         keys.append(&mut tls);
+
+        let _: () = self.conn.del(&keys).await?;
+
+        Ok(())
+    }
+
+    async fn project_get_apikeys(&self, project_id: &Uuid) -> Result<Vec<ApiKey>, CacheError> {
+        let pattern = self.apikeys_pattern(project_id);
+        let keys = self.keys_from_pattern(&pattern).await?;
+
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut apikeys = Vec::new();
+        let vals = self.conn.mget(&keys).await?;
+        for val in vals.into_iter().flatten() {
+            let apikey: ApiKey =
+                serde_json::from_str(&val).map_err(|e| CacheError::JsonError(e.to_string()))?;
+            apikeys.push(apikey);
+        }
+
+        Ok(apikeys)
+    }
+
+    async fn project_set_apikeys(
+        &self,
+        project_id: &Uuid,
+        apikeys: &Vec<ApiKey>,
+    ) -> Result<(), CacheError> {
+        let mut map = HashMap::new();
+        for apikey in apikeys {
+            let key = self.apikeys_key(project_id, &apikey.id);
+            let val =
+                serde_json::to_string(apikey).map_err(|e| CacheError::JsonError(e.to_string()))?;
+            map.insert(key, val);
+        }
+
+        if map.is_empty() {
+            return Ok(());
+        }
+
+        let vec_tuples = map.into_iter().collect::<Vec<(String, String)>>();
+        let _: () = self.conn.mset(&vec_tuples).await?;
+
+        Ok(())
+    }
+
+    async fn project_del_apikeys(
+        &self,
+        project_id: &Uuid,
+        ids: &Vec<Uuid>,
+    ) -> Result<(), CacheError> {
+        let mut keys = Vec::new();
+        for id in ids {
+            let key = self.apikeys_key(project_id, id);
+            keys.push(key);
+        }
+
+        if keys.is_empty() {
+            return Ok(());
+        }
 
         let _: () = self.conn.del(&keys).await?;
 

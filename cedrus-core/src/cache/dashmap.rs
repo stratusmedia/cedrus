@@ -6,12 +6,16 @@ use cedrus_cedar::{
 use dashmap::DashMap;
 use uuid::Uuid;
 
-use crate::core::{IdentitySource, project::Project};
+use crate::core::{
+    IdentitySource,
+    project::{ApiKey, Project},
+};
 
 use super::{Cache, CacheError};
 
 pub struct DashMapCache {
     projects: DashMap<Uuid, Project>,
+    apikeys: DashMap<(Uuid, Uuid), ApiKey>,
     identity_sources: DashMap<Uuid, IdentitySource>,
     schemas: DashMap<Uuid, Schema>,
     entities: DashMap<(Uuid, EntityUid), Entity>,
@@ -30,6 +34,7 @@ impl DashMapCache {
     pub fn new() -> Self {
         Self {
             projects: DashMap::new(),
+            apikeys: DashMap::new(),
             identity_sources: DashMap::new(),
             schemas: DashMap::new(),
             entities: DashMap::new(),
@@ -68,6 +73,38 @@ impl Cache for DashMapCache {
 
     async fn project_del(&self, project_id: &Uuid) -> Result<(), CacheError> {
         self.projects.remove(project_id);
+        Ok(())
+    }
+
+    async fn project_get_apikeys(&self, project_id: &Uuid) -> Result<Vec<ApiKey>, CacheError> {
+        Ok(self
+            .apikeys
+            .iter()
+            .filter(|r| r.key().0 == *project_id)
+            .map(|r| r.value().clone())
+            .collect())
+    }
+
+    async fn project_set_apikeys(
+        &self,
+        project_id: &Uuid,
+        apikeys: &Vec<ApiKey>,
+    ) -> Result<(), CacheError> {
+        for apikey in apikeys {
+            self.apikeys
+                .insert((*project_id, apikey.id), apikey.clone());
+        }
+        Ok(())
+    }
+
+    async fn project_del_apikeys(
+        &self,
+        project_id: &Uuid,
+        ids: &Vec<Uuid>,
+    ) -> Result<(), CacheError> {
+        for id in ids {
+            self.apikeys.remove(&(*project_id, *id));
+        }
         Ok(())
     }
 

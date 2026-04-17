@@ -364,8 +364,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         format!("{}:{}", config.server.host, config.server.port)
     };
 
+    tracing::info!("Server starting on {}", addr);
+
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
+
+    tracing::info!("Server stopped");
 
     // Gracefully shut down the tracer provider, flushing remaining spans
     #[cfg(feature = "trace")]

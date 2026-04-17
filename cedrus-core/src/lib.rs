@@ -519,7 +519,7 @@ pub enum EventType {
     ReloadAll,
     ProjectCreate(Uuid),
     ProjectUpdate(Uuid),
-    ProjectRemove(Uuid, Vec<String>),
+    ProjectRemove(Uuid),
     ProjectPutIdentitySource(Uuid),
     ProjectRemoveIdentitySource(Uuid),
     ProjectPutSchema(Uuid),
@@ -559,10 +559,10 @@ impl Event {
         }
     }
 
-    pub fn project_remove(sender: Uuid, project_id: Uuid, api_keys: Vec<String>) -> Self {
+    pub fn project_remove(sender: Uuid, project_id: Uuid) -> Self {
         Self {
             sender,
-            msg: EventType::ProjectRemove(project_id, api_keys),
+            msg: EventType::ProjectRemove(project_id),
         }
     }
 

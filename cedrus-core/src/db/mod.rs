@@ -97,7 +97,7 @@ pub trait Database: Send + Sync {
     async fn project_apikeys_remove(
         &self,
         project_id: &Uuid,
-        keys: &Vec<String>,
+        ids: &Vec<Uuid>,
     ) -> Result<(), DatabaseError>;
 
     async fn project_schema_load(&self, project_id: &Uuid)
@@ -178,12 +178,28 @@ pub async fn database_factory(
     conf: &DbConfig,
 ) -> Result<Box<dyn Database + Send + Sync>, DatabaseError> {
     let db: Box<dyn Database + Send + Sync> = match conf {
-        DbConfig::DynamoDbConfig(conf) => Box::new(dynamodb::DynamoDb::new(conf).await?),
+        DbConfig::DynamoDbConfig(conf) => {
+            let db = dynamodb::DynamoDb::new(conf).await?;
+
+            if conf.initialize {
+                match db.init().await {
+                    Ok(_) => tracing::info!("DynamoDB initialized"),
+                    Err(e) => tracing::error!("DynamoDB initialization failed: {}", e),
+                }
+            }
+
+            Box::new(db)
+        }
         DbConfig::CouchDbConfig(conf) => {
             let db = couchdb::CouchDb::new(conf)?;
-            db.init()
-                .await
-                .map_err(|e| DatabaseError::ConnectionError(e.to_string()))?;
+
+            if conf.initialize {
+                match db.init().await {
+                    Ok(_) => tracing::info!("CouchDB initialized"),
+                    Err(e) => tracing::error!("CouchDB initialization failed: {}", e),
+                }
+            }
+
             Box::new(db)
         }
     };

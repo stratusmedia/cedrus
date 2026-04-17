@@ -104,12 +104,12 @@ impl CouchDb {
         Ok(serde_json::from_value(value)?)
     }
 
-    fn project_apikey_id(project_id: &Uuid, key: &str) -> String {
-        format!("{}#{}#{}", PROJECT_APIKEY_TYPE, project_id, key)
+    fn project_apikey_id(project_id: &Uuid, id: &Uuid) -> String {
+        format!("{}#{}#{}", PROJECT_APIKEY_TYPE, project_id, id)
     }
 
     fn project_apikey_to_value(project_id: &Uuid, apikey: &ApiKey) -> Result<Value, DatabaseError> {
-        let id = Self::project_apikey_id(project_id, &apikey.key);
+        let id = Self::project_apikey_id(project_id, &apikey.id);
         let mut value = serde_json::to_value(apikey)?;
         if let Some(obj) = value.as_object_mut() {
             obj.insert(ID_KEY.to_string(), Value::String(id));
@@ -411,11 +411,11 @@ impl Database for CouchDb {
     async fn project_apikeys_remove(
         &self,
         project_id: &Uuid,
-        keys: &Vec<String>,
+        ids: &Vec<Uuid>,
     ) -> Result<(), DatabaseError> {
         let db = self.client.db(&self.db_name).await?;
-        for key in keys {
-            let id = Self::project_apikey_id(project_id, key);
+        for id in ids {
+            let id = Self::project_apikey_id(project_id, id);
             if let Ok(doc) = db.get::<Value>(&id).await {
                 let _ = db.remove(&doc).await;
             }

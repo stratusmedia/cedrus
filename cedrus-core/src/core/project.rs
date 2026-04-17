@@ -17,23 +17,27 @@ const TEMPLATE_PROJECT_ADMIN_ROLE: &str = "ProjectAdminRole";
 #[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ApiKey {
+    pub id: Uuid,
     pub key: String,
     pub name: String,
     pub project_id: Uuid,
     pub owner: EntityUid,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 impl ApiKey {
-    pub fn new(key: String, name: String, project_id: Uuid, owner: EntityUid) -> Self {
+    pub fn new(id: Uuid, key: String, name: String, project_id: Uuid, owner: EntityUid) -> Self {
         let now = chrono::Utc::now();
 
         Self {
+            id,
             key,
             name,
             project_id,
             owner,
             created_at: now,
+            updated_at: now,
         }
     }
 }
@@ -44,8 +48,6 @@ pub struct Project {
     pub id: Uuid,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub name: String,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub api_keys: Vec<ApiKey>,
 
     pub owner: EntityUid,
 
@@ -64,7 +66,6 @@ impl Project {
             name,
             owner,
             roles: HashMap::new(),
-            api_keys: Vec::new(),
             created_at: now,
             updated_at: now,
         }

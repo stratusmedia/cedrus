@@ -303,7 +303,7 @@ impl DynamoDb {
             serde_dynamo::to_item(apikey)?;
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#AK#{}", pk, apikey.key);
+        let sk = format!("{}#AK#{}", pk, apikey.id);
         self.add_indexes_to_item(&mut item, &pk, &sk, PROJECT_APIKEY_TYPE);
 
         Ok(item)
@@ -845,13 +845,13 @@ impl Database for DynamoDb {
     async fn project_apikeys_remove(
         &self,
         project_id: &Uuid,
-        keys: &Vec<String>,
+        ids: &Vec<Uuid>,
     ) -> Result<(), DatabaseError> {
         let mut request_items = Vec::new();
 
-        for key in keys {
+        for id in ids {
             let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-            let sk = format!("{}#AK#{}", pk, key);
+            let sk = format!("{}#AK#{}", pk, id);
 
             let key_map = vec![
                 (

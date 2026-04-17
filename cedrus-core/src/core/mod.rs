@@ -213,6 +213,8 @@ pub struct DynamoDBConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub region: Option<String>,
     pub table_name: String,
+    #[serde(default)]
+    pub initialize: bool,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]
@@ -222,6 +224,8 @@ pub struct CouchDbConfig {
     pub username: String,
     pub password: String,
     pub db_name: String,
+    #[serde(default)]
+    pub initialize: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -309,5 +313,5 @@ pub struct CedrusConfig {
     pub cache: CacheConfig,
     #[serde(default)]
     pub pubsub: PubSubConfig,
-    pub identity_source: IdentitySource,
+    pub identity_source: Option<IdentitySource>,
 }

@@ -6,7 +6,10 @@ use cedrus_cedar::{
 use redis::RedisError;
 use uuid::Uuid;
 
-use crate::core::{IdentitySource, project::Project};
+use crate::core::{
+    IdentitySource,
+    project::{ApiKey, Project},
+};
 
 pub mod dashmap;
 pub mod valkey;
@@ -48,6 +51,18 @@ pub trait Cache: Send + Sync {
     async fn project_get(&self, project_id: &Uuid) -> Result<Option<Project>, CacheError>;
     async fn project_set(&self, project: &Project) -> Result<(), CacheError>;
     async fn project_del(&self, project_id: &Uuid) -> Result<(), CacheError>;
+
+    async fn project_get_apikeys(&self, project_id: &Uuid) -> Result<Vec<ApiKey>, CacheError>;
+    async fn project_set_apikeys(
+        &self,
+        project_id: &Uuid,
+        apikeys: &Vec<ApiKey>,
+    ) -> Result<(), CacheError>;
+    async fn project_del_apikeys(
+        &self,
+        project_id: &Uuid,
+        ids: &Vec<Uuid>,
+    ) -> Result<(), CacheError>;
 
     async fn project_get_identity_source(
         &self,
