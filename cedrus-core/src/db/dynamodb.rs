@@ -30,6 +30,50 @@ const PROJECT_POLICY_TYPE: &str = "PP";
 const PROJECT_TEMPLATE_TYPE: &str = "PT";
 const PROJECT_TEMPLATE_LINK_TYPE: &str = "PTL";
 
+/*
+Types of items in the table:
+
+Project:
+PK: "P#[PROJECT_UUID]"
+SK: "P#[PROJECT_UUID]"
+GSI1PK: "P"
+
+API Key:
+PK: "P#[PROJECT_UUID]"
+SK: "P#[PROJECT_UUID]#PAK#[API_KEY_UUID]"
+GSI1PK: "PAK"
+
+Identity Source:
+PK: "P#[PROJECT_UUID]"
+SK: "P#[PROJECT_UUID]#PIS"
+GSI1PK: "PI"
+
+Schema:
+PK: "P#[PROJECT_UUID]"
+SK: "P#[PROJECT_UUID]#PS"
+GSI1PK: "PS"
+
+Entity:
+PK: "P#[PROJECT_UUID]"
+SK: "P#[PROJECT_UUID]#PE#[ENTITY_UID]"
+GSI1PK: "PE"
+
+Policy:
+PK: "P#[PROJECT_UUID]"
+SK: "P#[PROJECT_UUID]#PP#[POLICY_ID]"
+GSI1PK: "PP"
+
+Template:
+PK: "P#[PROJECT_UUID]"
+SK: "P#[PROJECT_UUID]#PT#[TEMPLATE_ID]"
+GSI1PK: "PT"
+
+Template Link:
+PK: "P#[PROJECT_UUID]"
+SK: "P#[PROJECT_UUID]#PTL#[TEMPLATE_LINK_ID]"
+GSI1PK: "PTL"
+*/
+
 const DEFAULT_ATT: &str = "__DEFAULT__";
 const SCHEMA_ATT: &str = "schema";
 const CREATED_AT_ATT: &str = "createdAt";
@@ -37,9 +81,11 @@ const UPDATED_AT_ATT: &str = "updatedAt";
 
 #[derive(Debug)]
 pub struct FilterExpression {
-    pub expr: String,
+    pub expression: Option<String>,
     pub names: HashMap<String, String>,
     pub values: HashMap<String, AttributeValue>,
+    pub limit: Option<i32>,
+    pub start_key: Option<HashMap<String, AttributeValue>>,
 }
 
 impl Default for FilterExpression {
@@ -51,9 +97,174 @@ impl Default for FilterExpression {
 impl FilterExpression {
     pub fn new() -> FilterExpression {
         FilterExpression {
-            expr: String::new(),
+            expression: None,
             names: HashMap::new(),
             values: HashMap::new(),
+            limit: None,
+            start_key: None,
+        }
+    }
+
+    pub fn new_with_query(query: &Query) -> Result<Self, DatabaseError> {
+        let mut filter = FilterExpression::new();
+
+        if let Some(selector) = query.selector.clone() {
+            let mut expression = String::new();
+            Self::selector_to_filter("".to_string(), selector, &mut expression, &mut filter);
+            if !expression.trim().is_empty() {
+                filter.expression = Some(expression);
+            }
+        }
+
+        if query.limit > 0 {
+            filter.limit = Some(query.limit as i32);
+        }
+        if let Some(start_key) = query.start_key.clone() {
+            let key: serde_json::Value = serde_json::from_str(&start_key)?;
+            let key: HashMap<String, AttributeValue> = serde_dynamo::to_item(key)?;
+            filter.start_key = Some(key);
+        }
+
+        Ok(filter)
+    }
+
+    pub fn add_eq(&mut self, name: &str, value: AttributeValue) -> String {
+        let x = self.names.len();
+        let att_name = format!("#n{x}");
+        self.names.insert(att_name.clone(), name.to_string());
+
+        let x = self.values.len();
+        let att_val = format!(":v{x}");
+        self.values.insert(att_val.clone(), value);
+
+        format!("{att_name} = {att_val}")
+    }
+
+    pub fn add_begins_with(&mut self, name: &str, value: AttributeValue) -> String {
+        let x = self.names.len();
+        let att_name = format!("#n{x}");
+        self.names.insert(att_name.clone(), name.to_string());
+
+        let x = self.values.len();
+        let att_val = format!(":v{x}");
+        self.values.insert(att_val.clone(), value);
+
+        format!("begins_with({att_name}, {att_val})")
+    }
+
+    fn selector_to_filter(
+        path: String,
+        expr: Selector,
+        expression: &mut String,
+        filter: &mut FilterExpression,
+    ) {
+        match expr {
+            Selector::And(val) => {
+                let left = val[0].clone();
+                Self::selector_to_filter(path.clone(), left, expression, filter);
+                expression.push_str(" AND ");
+                let right = val[1].clone();
+                Self::selector_to_filter(path, right, expression, filter);
+            }
+            Selector::Or(val) => {
+                let left = val[0].clone();
+                Self::selector_to_filter(path.clone(), left, expression, filter);
+                expression.push_str(" OR ");
+                let right = val[1].clone();
+                Self::selector_to_filter(path, right, expression, filter);
+            }
+            Selector::Eq(val) => {
+                expression.push_str(&path);
+                expression.push_str(" = ");
+                Self::selector_to_filter(path, *val, expression, filter);
+            }
+            Selector::Neq(val) => {
+                expression.push_str(&path);
+                expression.push_str(" != ");
+                Self::selector_to_filter(path, *val, expression, filter);
+            }
+            Selector::Gt(val) => {
+                expression.push_str(&path);
+                expression.push_str(" > ");
+                Self::selector_to_filter(path, *val, expression, filter);
+            }
+            Selector::Gte(val) => {
+                expression.push_str(&path);
+                expression.push_str(" >= ");
+                Self::selector_to_filter(path, *val, expression, filter);
+            }
+            Selector::Lt(val) => {
+                expression.push_str(&path);
+                expression.push_str(" < ");
+                Self::selector_to_filter(path, *val, expression, filter);
+            }
+            Selector::Lte(val) => {
+                expression.push_str(&path);
+                expression.push_str(" <= ");
+                Self::selector_to_filter(path, *val, expression, filter);
+            }
+            Selector::Exists(val) => {
+                let str = if val {
+                    format!("attribute_exists({path})")
+                } else {
+                    format!("attribute_not_exists({path})")
+                };
+
+                expression.push_str(&str);
+            }
+            Selector::In(_items) => {}
+            Selector::Nin(_items) => {}
+            Selector::Record(map) => {
+                for (key, val) in map {
+                    let x = filter.names.len();
+                    let att_name = format!("#n{x}");
+                    filter.names.insert(att_name.clone(), key);
+
+                    let path = if path.is_empty() {
+                        att_name
+                    } else {
+                        format!("{}.{}", path, att_name)
+                    };
+
+                    match val {
+                        Selector::String(_) => {
+                            expression.push_str(&path);
+                            expression.push_str(" = ");
+                        }
+                        Selector::Number(_) => {
+                            expression.push_str(&path);
+                            expression.push_str(" = ");
+                        }
+                        Selector::Boolean(_) => {
+                            expression.push_str(&path);
+                            expression.push_str(" = ");
+                        }
+                        _ => {}
+                    }
+
+                    Self::selector_to_filter(path, val, expression, filter);
+                }
+            }
+            Selector::String(val) => {
+                let x = filter.values.len();
+                let att_val = format!(":v{x}");
+                expression.push_str(&att_val);
+                filter.values.insert(att_val, AttributeValue::S(val));
+            }
+            Selector::Number(val) => {
+                let x = filter.values.len();
+                let att_val = format!(":v{x}");
+                expression.push_str(&att_val);
+                filter
+                    .values
+                    .insert(att_val, AttributeValue::N(val.to_string()));
+            }
+            Selector::Boolean(val) => {
+                let x = filter.values.len();
+                let att_val = format!(":v{x}");
+                expression.push_str(&att_val);
+                filter.values.insert(att_val, AttributeValue::Bool(val));
+            }
         }
     }
 }
@@ -177,31 +388,24 @@ impl DynamoDb {
 
     fn add_indexes_to_item(
         &self,
-        item: &mut HashMap<String, aws_sdk_dynamodb::types::AttributeValue>,
+        item: &mut HashMap<String, AttributeValue>,
         pk: &str,
         sk: &str,
         entity_type_pk: &str,
     ) {
-        item.insert(
-            PK.to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::S(pk.to_string()),
-        );
-        item.insert(
-            SK.to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::S(sk.to_string()),
-        );
+        item.insert(PK.to_string(), AttributeValue::S(pk.to_string()));
+        item.insert(SK.to_string(), AttributeValue::S(sk.to_string()));
         item.insert(
             GSI1_PK.to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::S(entity_type_pk.to_string()),
+            AttributeValue::S(entity_type_pk.to_string()),
         );
     }
 
     fn project_to_item(
         &self,
         project: &Project,
-    ) -> Result<HashMap<String, aws_sdk_dynamodb::types::AttributeValue>, DatabaseError> {
-        let mut item: HashMap<String, aws_sdk_dynamodb::types::AttributeValue> =
-            serde_dynamo::to_item(project)?;
+    ) -> Result<HashMap<String, AttributeValue>, DatabaseError> {
+        let mut item: HashMap<String, AttributeValue> = serde_dynamo::to_item(project)?;
 
         item.insert(
             CREATED_AT_ATT.to_string(),
@@ -220,7 +424,7 @@ impl DynamoDb {
 
     fn project_from_item(
         &self,
-        item: &mut HashMap<String, aws_sdk_dynamodb::types::AttributeValue>,
+        item: &mut HashMap<String, AttributeValue>,
     ) -> Result<Project, DatabaseError> {
         let Some(created_at_att) = item.get(CREATED_AT_ATT) else {
             return Err(DatabaseError::MissingAttribute(CREATED_AT_ATT.to_string()));
@@ -263,17 +467,17 @@ impl DynamoDb {
         &self,
         project_id: &Uuid,
         schema: &Schema,
-    ) -> Result<HashMap<String, aws_sdk_dynamodb::types::AttributeValue>, DatabaseError> {
+    ) -> Result<HashMap<String, AttributeValue>, DatabaseError> {
         let schema = DynamoDb::empty_namespace_to_default(schema.clone());
 
-        let mut item: HashMap<String, aws_sdk_dynamodb::types::AttributeValue> = HashMap::new();
+        let mut item: HashMap<String, AttributeValue> = HashMap::new();
         item.insert(
             SCHEMA_ATT.to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::M(serde_dynamo::to_item(schema)?),
+            AttributeValue::M(serde_dynamo::to_item(schema)?),
         );
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#S", pk);
+        let sk = format!("{}#{}", pk, PROJECT_SCHEMA_TYPE);
         self.add_indexes_to_item(&mut item, &pk, &sk, PROJECT_SCHEMA_TYPE);
 
         Ok(item)
@@ -281,7 +485,7 @@ impl DynamoDb {
 
     fn project_schema_from_item(
         &self,
-        item: &HashMap<String, aws_sdk_dynamodb::types::AttributeValue>,
+        item: &HashMap<String, AttributeValue>,
     ) -> Result<Schema, DatabaseError> {
         let Some(schema_att) = item.get(SCHEMA_ATT) else {
             return Err(DatabaseError::MissingAttribute(SCHEMA_ATT.to_string()));
@@ -298,12 +502,21 @@ impl DynamoDb {
         &self,
         project_id: &Uuid,
         apikey: &ApiKey,
-    ) -> Result<HashMap<String, aws_sdk_dynamodb::types::AttributeValue>, DatabaseError> {
-        let mut item: HashMap<String, aws_sdk_dynamodb::types::AttributeValue> =
-            serde_dynamo::to_item(apikey)?;
+    ) -> Result<HashMap<String, AttributeValue>, DatabaseError> {
+        let mut item: HashMap<String, AttributeValue> = serde_dynamo::to_item(apikey)?;
+
+        item.insert(
+            CREATED_AT_ATT.to_string(),
+            AttributeValue::N(apikey.created_at.timestamp_millis().to_string()),
+        );
+        item.insert(
+            UPDATED_AT_ATT.to_string(),
+            AttributeValue::N(apikey.updated_at.timestamp_millis().to_string()),
+        );
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#AK#{}", pk, apikey.id);
+        let sk = format!("{}#{}#{}", pk, PROJECT_APIKEY_TYPE, apikey.id);
+
         self.add_indexes_to_item(&mut item, &pk, &sk, PROJECT_APIKEY_TYPE);
 
         Ok(item)
@@ -311,8 +524,42 @@ impl DynamoDb {
 
     fn project_apikey_from_item(
         &self,
-        item: &HashMap<String, aws_sdk_dynamodb::types::AttributeValue>,
+        item: &mut HashMap<String, AttributeValue>,
     ) -> Result<ApiKey, DatabaseError> {
+        let Some(created_at_att) = item.get(CREATED_AT_ATT) else {
+            return Err(DatabaseError::MissingAttribute(CREATED_AT_ATT.to_string()));
+        };
+        let Some(updated_at_att) = item.get(UPDATED_AT_ATT) else {
+            return Err(DatabaseError::MissingAttribute(UPDATED_AT_ATT.to_string()));
+        };
+        let Ok(created_at_val) = created_at_att.as_n() else {
+            return Err(DatabaseError::InvalidAttribute(CREATED_AT_ATT.to_string()));
+        };
+        let Ok(updated_at_val) = updated_at_att.as_n() else {
+            return Err(DatabaseError::InvalidAttribute(UPDATED_AT_ATT.to_string()));
+        };
+        let Ok(created_at_int) = created_at_val.parse::<i64>() else {
+            return Err(DatabaseError::InvalidAttribute(CREATED_AT_ATT.to_string()));
+        };
+        let Ok(updated_at_int) = updated_at_val.parse::<i64>() else {
+            return Err(DatabaseError::InvalidAttribute(UPDATED_AT_ATT.to_string()));
+        };
+        let Some(created_at) = chrono::DateTime::from_timestamp_millis(created_at_int) else {
+            return Err(DatabaseError::InvalidAttribute(CREATED_AT_ATT.to_string()));
+        };
+        let Some(updated_at) = chrono::DateTime::from_timestamp_millis(updated_at_int) else {
+            return Err(DatabaseError::InvalidAttribute(UPDATED_AT_ATT.to_string()));
+        };
+
+        item.insert(
+            CREATED_AT_ATT.to_string(),
+            AttributeValue::S(created_at.to_rfc3339()),
+        );
+        item.insert(
+            UPDATED_AT_ATT.to_string(),
+            AttributeValue::S(updated_at.to_rfc3339()),
+        );
+
         Ok(serde_dynamo::from_item(item.clone())?)
     }
 
@@ -320,12 +567,11 @@ impl DynamoDb {
         &self,
         project_id: &Uuid,
         identity_source: &IdentitySource,
-    ) -> Result<HashMap<String, aws_sdk_dynamodb::types::AttributeValue>, DatabaseError> {
-        let mut item: HashMap<String, aws_sdk_dynamodb::types::AttributeValue> =
-            serde_dynamo::to_item(identity_source)?;
+    ) -> Result<HashMap<String, AttributeValue>, DatabaseError> {
+        let mut item: HashMap<String, AttributeValue> = serde_dynamo::to_item(identity_source)?;
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#IS", pk);
+        let sk = format!("{}#{}", pk, PROJECT_IDENTITY_SOURCE_TYPE);
         self.add_indexes_to_item(&mut item, &pk, &sk, PROJECT_IDENTITY_SOURCE_TYPE);
 
         Ok(item)
@@ -333,7 +579,7 @@ impl DynamoDb {
 
     fn project_identity_source_from_item(
         &self,
-        item: &HashMap<String, aws_sdk_dynamodb::types::AttributeValue>,
+        item: &HashMap<String, AttributeValue>,
     ) -> Result<IdentitySource, DatabaseError> {
         Ok(serde_dynamo::from_item(item.clone())?)
     }
@@ -342,12 +588,11 @@ impl DynamoDb {
         &self,
         project_id: &Uuid,
         entity: &Entity,
-    ) -> Result<HashMap<String, aws_sdk_dynamodb::types::AttributeValue>, DatabaseError> {
-        let mut item: HashMap<String, aws_sdk_dynamodb::types::AttributeValue> =
-            serde_dynamo::to_item(entity)?;
+    ) -> Result<HashMap<String, AttributeValue>, DatabaseError> {
+        let mut item: HashMap<String, AttributeValue> = serde_dynamo::to_item(entity)?;
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#E#{}", pk, entity.uid());
+        let sk = format!("{}#{}#{}", pk, PROJECT_ENTITY_TYPE, entity.uid());
         self.add_indexes_to_item(&mut item, &pk, &sk, PROJECT_ENTITY_TYPE);
 
         Ok(item)
@@ -355,7 +600,7 @@ impl DynamoDb {
 
     fn project_entity_from_item(
         &self,
-        item: &HashMap<String, aws_sdk_dynamodb::types::AttributeValue>,
+        item: &HashMap<String, AttributeValue>,
     ) -> Result<Entity, DatabaseError> {
         Ok(serde_dynamo::from_item(item.clone())?)
     }
@@ -365,17 +610,16 @@ impl DynamoDb {
         project_id: &Uuid,
         policy_id: &PolicyId,
         policy: &Policy,
-    ) -> Result<HashMap<String, aws_sdk_dynamodb::types::AttributeValue>, DatabaseError> {
-        let mut item: HashMap<String, aws_sdk_dynamodb::types::AttributeValue> =
-            serde_dynamo::to_item(policy)?;
+    ) -> Result<HashMap<String, AttributeValue>, DatabaseError> {
+        let mut item: HashMap<String, AttributeValue> = serde_dynamo::to_item(policy)?;
 
         item.insert(
             "policyId".to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::S(policy_id.to_string()),
+            AttributeValue::S(policy_id.to_string()),
         );
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#P#{}", pk, policy_id);
+        let sk = format!("{}#{}#{}", pk, PROJECT_POLICY_TYPE, policy_id);
         self.add_indexes_to_item(&mut item, &pk, &sk, PROJECT_POLICY_TYPE);
 
         Ok(item)
@@ -383,7 +627,7 @@ impl DynamoDb {
 
     fn project_policy_from_item(
         &self,
-        item: &HashMap<String, aws_sdk_dynamodb::types::AttributeValue>,
+        item: &HashMap<String, AttributeValue>,
     ) -> Result<Policy, DatabaseError> {
         Ok(serde_dynamo::from_item(item.clone())?)
     }
@@ -393,17 +637,16 @@ impl DynamoDb {
         project_id: &Uuid,
         policy_id: &PolicyId,
         template: &Template,
-    ) -> Result<HashMap<String, aws_sdk_dynamodb::types::AttributeValue>, DatabaseError> {
-        let mut item: HashMap<String, aws_sdk_dynamodb::types::AttributeValue> =
-            serde_dynamo::to_item(template)?;
+    ) -> Result<HashMap<String, AttributeValue>, DatabaseError> {
+        let mut item: HashMap<String, AttributeValue> = serde_dynamo::to_item(template)?;
 
         item.insert(
             "policyId".to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::S(policy_id.to_string()),
+            AttributeValue::S(policy_id.to_string()),
         );
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#T#{}", pk, policy_id);
+        let sk = format!("{}#{}#{}", pk, PROJECT_TEMPLATE_TYPE, policy_id);
         self.add_indexes_to_item(&mut item, &pk, &sk, PROJECT_TEMPLATE_TYPE);
 
         Ok(item)
@@ -411,7 +654,7 @@ impl DynamoDb {
 
     fn project_template_from_item(
         &self,
-        item: &HashMap<String, aws_sdk_dynamodb::types::AttributeValue>,
+        item: &HashMap<String, AttributeValue>,
     ) -> Result<Template, DatabaseError> {
         Ok(serde_dynamo::from_item(item.clone())?)
     }
@@ -420,12 +663,11 @@ impl DynamoDb {
         &self,
         project_id: &Uuid,
         link: &TemplateLink,
-    ) -> Result<HashMap<String, aws_sdk_dynamodb::types::AttributeValue>, DatabaseError> {
-        let mut item: HashMap<String, aws_sdk_dynamodb::types::AttributeValue> =
-            serde_dynamo::to_item(link)?;
+    ) -> Result<HashMap<String, AttributeValue>, DatabaseError> {
+        let mut item: HashMap<String, AttributeValue> = serde_dynamo::to_item(link)?;
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#TL#{}", pk, link.new_id);
+        let sk = format!("{}#{}#{}", pk, PROJECT_TEMPLATE_LINK_TYPE, link.new_id);
         self.add_indexes_to_item(&mut item, &pk, &sk, PROJECT_TEMPLATE_LINK_TYPE);
 
         Ok(item)
@@ -433,7 +675,7 @@ impl DynamoDb {
 
     fn project_template_link_from_item(
         &self,
-        item: &HashMap<String, aws_sdk_dynamodb::types::AttributeValue>,
+        item: &HashMap<String, AttributeValue>,
     ) -> Result<TemplateLink, DatabaseError> {
         Ok(serde_dynamo::from_item(item.clone())?)
     }
@@ -448,159 +690,38 @@ impl DynamoDb {
                 .request_items(&self.table_name, chunk.to_vec())
                 .send()
                 .await
-                .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
+                .map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
         }
         Ok(())
-    }
-
-    fn selector_to_filter(&self, path: String, expr: Selector, filter: &mut FilterExpression) {
-        match expr {
-            Selector::And(val) => {
-                let left = val[0].clone();
-                self.selector_to_filter(path.clone(), left, filter);
-                filter.expr.push_str(" AND ");
-                let right = val[1].clone();
-                self.selector_to_filter(path, right, filter);
-            }
-            Selector::Or(val) => {
-                let left = val[0].clone();
-                self.selector_to_filter(path.clone(), left, filter);
-                filter.expr.push_str(" OR ");
-                let right = val[1].clone();
-                self.selector_to_filter(path, right, filter);
-            }
-            Selector::Eq(val) => {
-                filter.expr.push_str(&path);
-                filter.expr.push_str(" = ");
-                self.selector_to_filter(path, *val, filter);
-            }
-            Selector::Neq(val) => {
-                filter.expr.push_str(&path);
-                filter.expr.push_str(" != ");
-                self.selector_to_filter(path, *val, filter);
-            }
-            Selector::Gt(val) => {
-                filter.expr.push_str(&path);
-                filter.expr.push_str(" > ");
-                self.selector_to_filter(path, *val, filter);
-            }
-            Selector::Gte(val) => {
-                filter.expr.push_str(&path);
-                filter.expr.push_str(" >= ");
-                self.selector_to_filter(path, *val, filter);
-            }
-            Selector::Lt(val) => {
-                filter.expr.push_str(&path);
-                filter.expr.push_str(" < ");
-                self.selector_to_filter(path, *val, filter);
-            }
-            Selector::Lte(val) => {
-                filter.expr.push_str(&path);
-                filter.expr.push_str(" <= ");
-                self.selector_to_filter(path, *val, filter);
-            }
-            Selector::Exists(val) => {
-                let str = if val {
-                    format!("attribute_exists({path})")
-                } else {
-                    format!("attribute_not_exists({path})")
-                };
-
-                filter.expr.push_str(&str);
-            }
-            Selector::In(_items) => {}
-            Selector::Nin(_items) => {}
-            Selector::Record(map) => {
-                for (key, val) in map {
-                    let x = filter.names.len();
-                    let att_name = format!("#n{x}");
-                    filter.names.insert(att_name.clone(), key);
-
-                    let path = if path.is_empty() {
-                        att_name
-                    } else {
-                        format!("{}.{}", path, att_name)
-                    };
-
-                    match val {
-                        Selector::String(_) => {
-                            filter.expr.push_str(&path);
-                            filter.expr.push_str(" = ");
-                        }
-                        Selector::Number(_) => {
-                            filter.expr.push_str(&path);
-                            filter.expr.push_str(" = ");
-                        }
-                        Selector::Boolean(_) => {
-                            filter.expr.push_str(&path);
-                            filter.expr.push_str(" = ");
-                        }
-                        _ => {}
-                    }
-
-                    self.selector_to_filter(path, val, filter);
-                }
-            }
-            Selector::String(val) => {
-                let x = filter.values.len();
-                let att_val = format!(":v{x}");
-                filter.expr.push_str(&att_val);
-                filter.values.insert(att_val, AttributeValue::S(val));
-            }
-            Selector::Number(val) => {
-                let x = filter.values.len();
-                let att_val = format!(":v{x}");
-                filter.expr.push_str(&att_val);
-                filter
-                    .values
-                    .insert(att_val, AttributeValue::N(val.to_string()));
-            }
-            Selector::Boolean(val) => {
-                let x = filter.values.len();
-                let att_val = format!(":v{x}");
-                filter.expr.push_str(&att_val);
-                filter.values.insert(att_val, AttributeValue::Bool(val));
-            }
-        }
     }
 }
 
 #[async_trait::async_trait]
 impl Database for DynamoDb {
     async fn projects_load(&self, query: &Query) -> Result<PageList<Project>, DatabaseError> {
-        let mut filter = FilterExpression::new();
-        if let Some(selector) = query.selector.clone() {
-            self.selector_to_filter("".to_string(), selector, &mut filter);
-        }
-        filter
-            .names
-            .insert("#GSI1PK".to_string(), GSI1_PK.to_string());
-        filter.values.insert(
-            ":GSI1PK".to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::S(PROJECT_TYPE.to_string()),
-        );
+        let mut filter = FilterExpression::new_with_query(query)?;
 
-        let filter_expression = match !filter.expr.is_empty() {
-            true => Some(filter.expr),
-            false => None,
-        };
+        let condition = filter.add_eq("GSI1PK", AttributeValue::S(PROJECT_TYPE.to_string()));
 
         let mut stream = self
             .client
             .query()
             .table_name(&self.table_name)
             .index_name(GSI1)
-            .key_condition_expression("#GSI1PK = :GSI1PK")
-            .set_filter_expression(filter_expression)
+            .key_condition_expression(condition)
+            .set_filter_expression(filter.expression)
             .set_expression_attribute_names(Some(filter.names))
             .set_expression_attribute_values(Some(filter.values))
+            .set_limit(filter.limit)
+            .set_exclusive_start_key(filter.start_key)
             .into_paginator()
             .send();
 
         let mut last_key = None;
         let mut datas = Vec::new();
         while let Some(page) = stream.next().await {
-            let page = page.map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
+            let page =
+                page.map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
             for mut item in page.items.unwrap_or_default() {
                 datas.push(Self::project_from_item(&self, &mut item)?);
             }
@@ -623,14 +744,11 @@ impl Database for DynamoDb {
             .client
             .get_item()
             .table_name(&self.table_name)
-            .key(
-                PK,
-                aws_sdk_dynamodb::types::AttributeValue::S(pk.to_string()),
-            )
-            .key(SK, aws_sdk_dynamodb::types::AttributeValue::S(pk))
+            .key(PK, AttributeValue::S(pk.clone()))
+            .key(SK, AttributeValue::S(pk))
             .send()
             .await
-            .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?
+            .map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?
             .item
         else {
             return Ok(None);
@@ -648,7 +766,7 @@ impl Database for DynamoDb {
             .set_item(Some(item))
             .send()
             .await
-            .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
+            .map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
 
         Ok(())
     }
@@ -664,22 +782,22 @@ impl Database for DynamoDb {
             .table_name(&self.table_name)
             .key_condition_expression("#PK = :PK")
             .expression_attribute_names("#PK", "PK")
-            .expression_attribute_values(
-                ":PK",
-                aws_sdk_dynamodb::types::AttributeValue::S(pk.to_string()),
-            )
+            .expression_attribute_values(":PK", AttributeValue::S(pk))
             .into_paginator()
             .send();
 
         while let Some(page) = stream.next().await {
-            let page = page.map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
+            let page =
+                page.map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
             for item in &page.items.unwrap_or_default() {
-                let Some(pk) = item.get("PK") else {
-                    continue;
-                };
-                let Some(sk) = item.get("SK") else {
-                    continue;
-                };
+                let pk = item.get("PK").ok_or_else(|| {
+                    tracing::error!("Missing PK in item: {:?}", item);
+                    DatabaseError::MissingAttribute("PK".to_string())
+                })?;
+                let sk = item.get("SK").ok_or_else(|| {
+                    tracing::error!("Missing SK in item: {:?}", item);
+                    DatabaseError::MissingAttribute("SK".to_string())
+                })?;
 
                 let request = WriteRequest::builder()
                     .delete_request(
@@ -695,7 +813,7 @@ impl Database for DynamoDb {
         }
 
         let pk = format!("{}#{}", PROJECT_TYPE, Uuid::nil());
-        let sk = format!("{}#TL#{}", pk, id);
+        let sk = format!("{}#{}#{}", pk, PROJECT_TEMPLATE_LINK_TYPE, id);
         let mut stream = self
             .client
             .query()
@@ -714,12 +832,14 @@ impl Database for DynamoDb {
         while let Some(page) = stream.next().await {
             let page = page.map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
             for item in &page.items.unwrap_or_default() {
-                let Some(pk) = item.get("PK") else {
-                    continue;
-                };
-                let Some(sk) = item.get("SK") else {
-                    continue;
-                };
+                let pk = item.get("PK").ok_or_else(|| {
+                    tracing::error!("Missing PK in item: {:?}", item);
+                    DatabaseError::MissingAttribute("PK".to_string())
+                })?;
+                let sk = item.get("SK").ok_or_else(|| {
+                    tracing::error!("Missing SK in item: {:?}", item);
+                    DatabaseError::MissingAttribute("SK".to_string())
+                })?;
 
                 let request = WriteRequest::builder()
                     .delete_request(
@@ -734,23 +854,24 @@ impl Database for DynamoDb {
             }
         }
 
+        self.batch_write_item(request_items).await?;
+
         let uid = EntityUid::new(
             crate::core::project::PROJECT_ENTITY_TYPE.to_string(),
             id.to_string(),
         );
-        let sk = format!("{}#E#{}", pk, uid);
-        let request = WriteRequest::builder()
-            .delete_request(
-                DeleteRequest::builder()
-                    .key("PK", aws_sdk_dynamodb::types::AttributeValue::S(pk))
-                    .key("SK", aws_sdk_dynamodb::types::AttributeValue::S(sk))
-                    .build()
-                    .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?,
-            )
-            .build();
-        request_items.push(request);
 
-        self.batch_write_item(request_items).await?;
+        let pk = format!("{}#{}", PROJECT_TYPE, Uuid::nil());
+        let sk = format!("{}#{}#{}", pk, PROJECT_ENTITY_TYPE, uid.to_string());
+
+        self.client
+            .delete_item()
+            .table_name(&self.table_name)
+            .key(PK, AttributeValue::S(pk))
+            .key(SK, AttributeValue::S(sk))
+            .send()
+            .await
+            .map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
 
         Ok(())
     }
@@ -760,48 +881,35 @@ impl Database for DynamoDb {
         project_id: &Uuid,
         query: &Query,
     ) -> Result<PageList<ApiKey>, DatabaseError> {
-        let mut filter = FilterExpression::new();
-
-        if let Some(selector) = query.selector.clone() {
-            self.selector_to_filter("".to_string(), selector, &mut filter);
-        }
-
-        let filter_expression = match !filter.expr.is_empty() {
-            true => Some(filter.expr),
-            false => None,
-        };
+        let mut filter = FilterExpression::new_with_query(query)?;
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#AK#", pk);
+        let sk = format!("{}#{}#", pk, PROJECT_APIKEY_TYPE);
 
-        filter.names.insert("#PK".to_string(), PK.to_string());
-        filter.names.insert("#SK".to_string(), SK.to_string());
-        filter.values.insert(
-            ":PK".to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::S(pk.to_string()),
-        );
-        filter.values.insert(
-            ":SK".to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::S(sk.to_string()),
-        );
+        let att1 = filter.add_eq("PK", AttributeValue::S(pk));
+        let att2 = filter.add_begins_with("SK", AttributeValue::S(sk));
+        let condition = format!("{} AND {}", att1, att2);
 
         let mut stream = self
             .client
             .query()
             .table_name(&self.table_name)
-            .key_condition_expression("#PK = :PK AND begins_with(#SK, :SK)")
-            .set_filter_expression(filter_expression)
+            .key_condition_expression(condition)
+            .set_filter_expression(filter.expression)
             .set_expression_attribute_names(Some(filter.names))
             .set_expression_attribute_values(Some(filter.values))
+            .set_limit(filter.limit)
+            .set_exclusive_start_key(filter.start_key)
             .into_paginator()
             .send();
 
         let mut last_key = None;
         let mut datas = Vec::new();
         while let Some(page) = stream.next().await {
-            let page = page.map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
+            let page =
+                page.map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
             for item in page.items.unwrap_or_default() {
-                datas.push(Self::project_apikey_from_item(&self, &item)?);
+                datas.push(Self::project_apikey_from_item(&self, &mut item.clone())?);
             }
             if let Some(key) = page.last_evaluated_key {
                 let value: serde_json::Value = serde_dynamo::from_item(key)?;
@@ -824,9 +932,9 @@ impl Database for DynamoDb {
 
         for apikey in apikeys {
             let item = self.project_apikey_to_item(project_id, apikey)?;
-            let request = aws_sdk_dynamodb::types::WriteRequest::builder()
+            let request = WriteRequest::builder()
                 .put_request(
-                    aws_sdk_dynamodb::types::PutRequest::builder()
+                    PutRequest::builder()
                         .set_item(Some(item))
                         .build()
                         .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?,
@@ -835,9 +943,7 @@ impl Database for DynamoDb {
             request_items.push(request);
         }
 
-        if !request_items.is_empty() {
-            self.batch_write_item(request_items).await?;
-        }
+        self.batch_write_item(request_items).await?;
 
         Ok(())
     }
@@ -851,24 +957,18 @@ impl Database for DynamoDb {
 
         for id in ids {
             let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-            let sk = format!("{}#AK#{}", pk, id);
+            let sk = format!("{}#{}#{}", pk, PROJECT_APIKEY_TYPE, id);
 
             let key_map = vec![
-                (
-                    PK.to_string(),
-                    aws_sdk_dynamodb::types::AttributeValue::S(pk),
-                ),
-                (
-                    SK.to_string(),
-                    aws_sdk_dynamodb::types::AttributeValue::S(sk),
-                ),
+                (PK.to_string(), AttributeValue::S(pk)),
+                (SK.to_string(), AttributeValue::S(sk)),
             ]
             .into_iter()
             .collect();
 
-            let request = aws_sdk_dynamodb::types::WriteRequest::builder()
+            let request = WriteRequest::builder()
                 .delete_request(
-                    aws_sdk_dynamodb::types::DeleteRequest::builder()
+                    DeleteRequest::builder()
                         .set_key(Some(key_map))
                         .build()
                         .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?,
@@ -877,9 +977,7 @@ impl Database for DynamoDb {
             request_items.push(request);
         }
 
-        if !request_items.is_empty() {
-            self.batch_write_item(request_items).await?;
-        }
+        self.batch_write_item(request_items).await?;
 
         Ok(())
     }
@@ -889,20 +987,17 @@ impl Database for DynamoDb {
         project_id: &Uuid,
     ) -> Result<Option<IdentitySource>, DatabaseError> {
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#IS", pk);
+        let sk = format!("{}#{}", pk, PROJECT_IDENTITY_SOURCE_TYPE);
 
         let Some(item) = self
             .client
             .get_item()
             .table_name(&self.table_name)
-            .key(
-                PK,
-                aws_sdk_dynamodb::types::AttributeValue::S(pk.to_string()),
-            )
-            .key(SK, aws_sdk_dynamodb::types::AttributeValue::S(sk))
+            .key(PK, AttributeValue::S(pk))
+            .key(SK, AttributeValue::S(sk))
             .send()
             .await
-            .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?
+            .map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?
             .item
         else {
             return Ok(None);
@@ -924,26 +1019,23 @@ impl Database for DynamoDb {
             .set_item(Some(item))
             .send()
             .await
-            .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
+            .map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
 
         Ok(())
     }
 
     async fn project_identity_source_remove(&self, project_id: &Uuid) -> Result<(), DatabaseError> {
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#IS", pk);
+        let sk = format!("{}#{}", pk, PROJECT_IDENTITY_SOURCE_TYPE);
 
         self.client
             .delete_item()
             .table_name(&self.table_name)
-            .key(
-                PK,
-                aws_sdk_dynamodb::types::AttributeValue::S(pk.to_string()),
-            )
-            .key(SK, aws_sdk_dynamodb::types::AttributeValue::S(sk))
+            .key(PK, AttributeValue::S(pk))
+            .key(SK, AttributeValue::S(sk))
             .send()
             .await
-            .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
+            .map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
 
         Ok(())
     }
@@ -953,26 +1045,24 @@ impl Database for DynamoDb {
         project_id: &Uuid,
     ) -> Result<Option<Schema>, DatabaseError> {
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#S", pk);
+        let sk = format!("{}#{}", pk, PROJECT_SCHEMA_TYPE);
 
         let Some(item) = self
             .client
             .get_item()
             .table_name(&self.table_name)
-            .key(
-                PK,
-                aws_sdk_dynamodb::types::AttributeValue::S(pk.to_string()),
-            )
-            .key(SK, aws_sdk_dynamodb::types::AttributeValue::S(sk))
+            .key(PK, AttributeValue::S(pk))
+            .key(SK, AttributeValue::S(sk))
             .send()
             .await
-            .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?
+            .map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?
             .item
         else {
             return Ok(None);
         };
 
         let schema = Self::project_schema_from_item(&self, &item)?;
+
         Ok(Some(schema))
     }
 
@@ -988,26 +1078,23 @@ impl Database for DynamoDb {
             .set_item(Some(item))
             .send()
             .await
-            .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
+            .map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
 
         Ok(())
     }
 
     async fn project_schema_remove(&self, project_id: &Uuid) -> Result<(), DatabaseError> {
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#S", pk);
+        let sk = format!("{}#{}", pk, PROJECT_SCHEMA_TYPE);
 
         self.client
             .delete_item()
             .table_name(&self.table_name)
-            .key(
-                PK,
-                aws_sdk_dynamodb::types::AttributeValue::S(pk.to_string()),
-            )
-            .key(SK, aws_sdk_dynamodb::types::AttributeValue::S(sk))
+            .key(PK, AttributeValue::S(pk))
+            .key(SK, AttributeValue::S(sk))
             .send()
             .await
-            .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
+            .map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
 
         Ok(())
     }
@@ -1017,46 +1104,33 @@ impl Database for DynamoDb {
         project_id: &Uuid,
         query: &Query,
     ) -> Result<PageList<Entity>, DatabaseError> {
-        let mut filter = FilterExpression::new();
-
-        if let Some(selector) = query.selector.clone() {
-            self.selector_to_filter("".to_string(), selector, &mut filter);
-        }
-
-        let filter_expression = match !filter.expr.is_empty() {
-            true => Some(filter.expr),
-            false => None,
-        };
+        let mut filter = FilterExpression::new_with_query(query)?;
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#E#", pk);
+        let sk = format!("{}#{}#", pk, PROJECT_ENTITY_TYPE);
 
-        filter.names.insert("#PK".to_string(), PK.to_string());
-        filter.names.insert("#SK".to_string(), SK.to_string());
-        filter.values.insert(
-            ":PK".to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::S(pk.to_string()),
-        );
-        filter.values.insert(
-            ":SK".to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::S(sk.to_string()),
-        );
+        let att1 = filter.add_eq("PK", AttributeValue::S(pk));
+        let att2 = filter.add_begins_with("SK", AttributeValue::S(sk));
+        let condition = format!("{} AND {}", att1, att2);
 
         let mut stream = self
             .client
             .query()
             .table_name(&self.table_name)
-            .key_condition_expression("#PK = :PK AND begins_with(#SK, :SK)")
-            .set_filter_expression(filter_expression)
+            .key_condition_expression(condition)
+            .set_filter_expression(filter.expression)
             .set_expression_attribute_names(Some(filter.names))
             .set_expression_attribute_values(Some(filter.values))
+            .set_limit(filter.limit)
+            .set_exclusive_start_key(filter.start_key)
             .into_paginator()
             .send();
 
         let mut last_key = None;
         let mut datas = Vec::new();
         while let Some(page) = stream.next().await {
-            let page = page.map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
+            let page =
+                page.map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
             for item in page.items.unwrap_or_default() {
                 datas.push(Self::project_entity_from_item(&self, &item)?);
             }
@@ -1108,13 +1182,13 @@ impl Database for DynamoDb {
 
         for uid in entity_uids {
             let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-            let sk = format!("{}#E#{}", pk, uid);
+            let sk = format!("{}#{}#{}", pk, PROJECT_ENTITY_TYPE, uid);
 
             let request = WriteRequest::builder()
                 .delete_request(
                     DeleteRequest::builder()
-                        .key(PK, aws_sdk_dynamodb::types::AttributeValue::S(pk))
-                        .key(SK, aws_sdk_dynamodb::types::AttributeValue::S(sk))
+                        .key(PK, AttributeValue::S(pk))
+                        .key(SK, AttributeValue::S(sk))
                         .build()
                         .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?,
                 )
@@ -1133,46 +1207,33 @@ impl Database for DynamoDb {
         project_id: &Uuid,
         query: &Query,
     ) -> Result<PageHash<PolicyId, Policy>, DatabaseError> {
-        let mut filter = FilterExpression::new();
-
-        if let Some(selector) = query.selector.clone() {
-            self.selector_to_filter("".to_string(), selector, &mut filter);
-        }
-
-        let filter_expression = match !filter.expr.is_empty() {
-            true => Some(filter.expr),
-            false => None,
-        };
+        let mut filter = FilterExpression::new_with_query(query)?;
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#P#", pk);
+        let sk = format!("{}#{}#", pk, PROJECT_POLICY_TYPE);
 
-        filter.names.insert("#PK".to_string(), PK.to_string());
-        filter.names.insert("#SK".to_string(), SK.to_string());
-        filter.values.insert(
-            ":PK".to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::S(pk.to_string()),
-        );
-        filter.values.insert(
-            ":SK".to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::S(sk.to_string()),
-        );
+        let att1 = filter.add_eq("PK", AttributeValue::S(pk));
+        let att2 = filter.add_begins_with("SK", AttributeValue::S(sk));
+        let condition = format!("{} AND {}", att1, att2);
 
         let mut stream = self
             .client
             .query()
             .table_name(&self.table_name)
-            .key_condition_expression("#PK = :PK AND begins_with(#SK, :SK)")
-            .set_filter_expression(filter_expression)
+            .key_condition_expression(condition)
+            .set_filter_expression(filter.expression)
             .set_expression_attribute_names(Some(filter.names))
             .set_expression_attribute_values(Some(filter.values))
+            .set_limit(filter.limit)
+            .set_exclusive_start_key(filter.start_key)
             .into_paginator()
             .send();
 
         let mut last_key = None;
         let mut datas: HashMap<PolicyId, Policy> = HashMap::new();
         while let Some(page) = stream.next().await {
-            let page = page.map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
+            let page =
+                page.map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
             for item in page.items.unwrap_or_default() {
                 let Some(policy_id_attr) = item.get("policyId") else {
                     continue;
@@ -1233,13 +1294,13 @@ impl Database for DynamoDb {
 
         for policy_id in policy_ids {
             let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-            let sk = format!("{}#P#{}", pk, policy_id);
+            let sk = format!("{}#{}#{}", pk, PROJECT_POLICY_TYPE, policy_id);
 
             let request = WriteRequest::builder()
                 .delete_request(
                     DeleteRequest::builder()
-                        .key(PK, aws_sdk_dynamodb::types::AttributeValue::S(pk))
-                        .key(SK, aws_sdk_dynamodb::types::AttributeValue::S(sk))
+                        .key(PK, AttributeValue::S(pk))
+                        .key(SK, AttributeValue::S(sk))
                         .build()
                         .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?,
                 )
@@ -1258,48 +1319,33 @@ impl Database for DynamoDb {
         project_id: &Uuid,
         query: &Query,
     ) -> Result<PageHash<PolicyId, Template>, DatabaseError> {
-        let mut filter = FilterExpression::new();
-
-        if let Some(selector) = query.selector.clone() {
-            self.selector_to_filter("".to_string(), selector, &mut filter);
-        }
-
-        let filter_expression = match !filter.expr.is_empty() {
-            true => Some(filter.expr),
-            false => None,
-        };
+        let mut filter = FilterExpression::new_with_query(query)?;
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#T#", pk);
+        let sk = format!("{}#{}#", pk, PROJECT_TEMPLATE_TYPE);
 
-        filter.names.insert("#PK".to_string(), PK.to_string());
-        filter.names.insert("#SK".to_string(), SK.to_string());
-        filter.values.insert(
-            ":PK".to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::S(pk.to_string()),
-        );
-        filter.values.insert(
-            ":SK".to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::S(sk.to_string()),
-        );
+        let att1 = filter.add_eq("PK", AttributeValue::S(pk));
+        let att2 = filter.add_begins_with("SK", AttributeValue::S(sk));
+        let condition = format!("{} AND {}", att1, att2);
 
         let mut stream = self
             .client
             .query()
             .table_name(&self.table_name)
-            .key_condition_expression("#PK = :PK AND begins_with(#SK, :SK)")
-            .expression_attribute_names("#PK", PK)
-            .expression_attribute_names("#SK", SK)
-            .set_filter_expression(filter_expression)
+            .key_condition_expression(condition)
+            .set_filter_expression(filter.expression)
             .set_expression_attribute_names(Some(filter.names))
             .set_expression_attribute_values(Some(filter.values))
+            .set_limit(filter.limit)
+            .set_exclusive_start_key(filter.start_key)
             .into_paginator()
             .send();
 
         let mut last_key = None;
         let mut datas: HashMap<PolicyId, Template> = HashMap::new();
         while let Some(page) = stream.next().await {
-            let page = page.map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
+            let page =
+                page.map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
             for item in page.items.unwrap_or_default() {
                 let Some(policy_id_attr) = item.get("policyId") else {
                     continue;
@@ -1360,13 +1406,13 @@ impl Database for DynamoDb {
 
         for template_id in template_ids {
             let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-            let sk = format!("{}#T#{}", pk, template_id);
+            let sk = format!("{}#{}#{}", pk, PROJECT_TEMPLATE_TYPE, template_id);
 
             let request = WriteRequest::builder()
                 .delete_request(
                     DeleteRequest::builder()
-                        .key(PK, aws_sdk_dynamodb::types::AttributeValue::S(pk))
-                        .key(SK, aws_sdk_dynamodb::types::AttributeValue::S(sk))
+                        .key(PK, AttributeValue::S(pk))
+                        .key(SK, AttributeValue::S(sk))
                         .build()
                         .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?,
                 )
@@ -1385,48 +1431,33 @@ impl Database for DynamoDb {
         project_id: &Uuid,
         query: &Query,
     ) -> Result<PageList<TemplateLink>, DatabaseError> {
-        let mut filter = FilterExpression::new();
-
-        if let Some(selector) = query.selector.clone() {
-            self.selector_to_filter("".to_string(), selector, &mut filter);
-        }
-
-        let filter_expression = match !filter.expr.is_empty() {
-            true => Some(filter.expr),
-            false => None,
-        };
+        let mut filter = FilterExpression::new_with_query(query)?;
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-        let sk = format!("{}#TL#", pk);
+        let sk = format!("{}#{}#", pk, PROJECT_TEMPLATE_LINK_TYPE);
 
-        filter.names.insert("#PK".to_string(), PK.to_string());
-        filter.names.insert("#SK".to_string(), SK.to_string());
-        filter.values.insert(
-            ":PK".to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::S(pk.to_string()),
-        );
-        filter.values.insert(
-            ":SK".to_string(),
-            aws_sdk_dynamodb::types::AttributeValue::S(sk.to_string()),
-        );
+        let att1 = filter.add_eq("PK", AttributeValue::S(pk));
+        let att2 = filter.add_begins_with("SK", AttributeValue::S(sk));
+        let condition = format!("{} AND {}", att1, att2);
 
         let mut stream = self
             .client
             .query()
             .table_name(&self.table_name)
-            .key_condition_expression("#PK = :PK AND begins_with(#SK, :SK)")
-            .expression_attribute_names("#PK", PK)
-            .expression_attribute_names("#SK", SK)
-            .set_filter_expression(filter_expression)
+            .key_condition_expression(condition)
+            .set_filter_expression(filter.expression)
             .set_expression_attribute_names(Some(filter.names))
             .set_expression_attribute_values(Some(filter.values))
+            .set_limit(filter.limit)
+            .set_exclusive_start_key(filter.start_key)
             .into_paginator()
             .send();
 
         let mut last_key = None;
         let mut datas = Vec::new();
         while let Some(page) = stream.next().await {
-            let page = page.map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
+            let page =
+                page.map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
             for item in page.items.unwrap_or_default() {
                 datas.push(Self::project_template_link_from_item(&self, &item)?);
             }
@@ -1478,13 +1509,13 @@ impl Database for DynamoDb {
 
         for new_id in link_ids {
             let pk = format!("{}#{}", PROJECT_TYPE, project_id);
-            let sk = format!("{}#TL#{}", pk, new_id);
+            let sk = format!("{}#{}#{}", pk, PROJECT_TEMPLATE_LINK_TYPE, new_id);
 
             let request = WriteRequest::builder()
                 .delete_request(
                     DeleteRequest::builder()
-                        .key(PK, aws_sdk_dynamodb::types::AttributeValue::S(pk))
-                        .key(SK, aws_sdk_dynamodb::types::AttributeValue::S(sk))
+                        .key(PK, AttributeValue::S(pk))
+                        .key(SK, AttributeValue::S(sk))
                         .build()
                         .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?,
                 )

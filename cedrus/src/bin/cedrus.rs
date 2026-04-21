@@ -319,16 +319,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         panic!("Either the config file or the config url argument must be provided");
     };
 
-    let db = database_factory(&config.db).await?;
-    let cache = cache_factory(&config.cache).await?;
-    let pubsub = pubsub_factory(&config.pubsub).await?;
+    let db = match database_factory(&config.db).await {
+        Ok(db) => db,
+        Err(e) => panic!("Failed to create database: {}", e),
+    };
+    let cache = match cache_factory(&config.cache).await {
+        Ok(cache) => cache,
+        Err(e) => panic!("Failed to create cache: {}", e),
+    };
+    let pubsub = match pubsub_factory(&config.pubsub).await {
+        Ok(pubsub) => pubsub,
+        Err(e) => panic!("Failed to create pubsub: {}", e),
+    };
 
     let cedrus = Cedrus::new(db, cache, pubsub).await;
     let state = AppState::new(cedrus);
     let shared_state = Arc::new(state);
-    let _ = Cedrus::init_project(&shared_state.cedrus, &config).await;
-    let _ = Cedrus::init_cache(&shared_state.cedrus).await;
-    let _ = Cedrus::load_cache(&shared_state.cedrus).await;
+
+    match Cedrus::init_project(&shared_state.cedrus, &config).await {
+        Ok(_) => tracing::info!("Project initialized successfully"),
+        Err(e) => panic!("Failed to initialize project: {:?}", e),
+    };
+    match Cedrus::init_cache(&shared_state.cedrus).await {
+        Ok(_) => tracing::info!("Cache initialized successfully"),
+        Err(e) => panic!("Failed to initialize cache: {:?}", e),
+    };
+    match Cedrus::load_cache(&shared_state.cedrus).await {
+        Ok(_) => tracing::info!("Cache loaded successfully"),
+        Err(e) => panic!("Failed to load cache: {:?}", e),
+    };
 
     let shared = shared_state.clone();
     tokio::spawn(async move {
