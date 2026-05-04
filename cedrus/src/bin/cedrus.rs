@@ -332,7 +332,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => panic!("Failed to create pubsub: {}", e),
     };
 
-    let cedrus = Cedrus::new(db, cache, pubsub).await;
+    let cedrus = Cedrus::new(db, cache, pubsub, config.server.exclude_policy_annotation.clone()).await;
     let state = AppState::new(cedrus);
     let shared_state = Arc::new(state);
 

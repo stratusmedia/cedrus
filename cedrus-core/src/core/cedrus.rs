@@ -61,6 +61,8 @@ pub struct Cedrus {
     pub cache: Box<dyn Cache + Send + Sync>,
     pub pubsub: Box<dyn PubSub + Send + Sync>,
 
+    pub exclude_policy_annotation: Option<String>,
+
     pub api_keys: DashMap<String, EntityUid>,
 
     pub project_authorizers: DashMap<Uuid, Option<Authorizer>>,
@@ -74,6 +76,7 @@ impl Cedrus {
         db: Box<dyn Database + Send + Sync>,
         cache: Box<dyn Cache + Send + Sync>,
         pubsub: Box<dyn PubSub + Send + Sync>,
+        exclude_policy_annotation: Option<String>,
     ) -> Self {
         Self {
             id: Uuid::now_v7(),
@@ -81,6 +84,8 @@ impl Cedrus {
             db,
             cache,
             pubsub,
+
+            exclude_policy_annotation,
 
             api_keys: DashMap::new(),
 
@@ -562,7 +567,18 @@ impl Cedrus {
                 .project_cedar_policies
                 .get(project_id)
                 .ok_or(CedrusError::NotFound)?;
-            authorizer.is_authorized(&cedar_request, &cedar_policies, &cedar_entities)
+            
+            if let Some(annotation) = &self.exclude_policy_annotation {
+                let mut filtered_policies = cedar_policy::PolicySet::new();
+                for policy in cedar_policies.policies() {
+                    if policy.annotation(annotation).is_none() {
+                        let _ = filtered_policies.add(policy.clone());
+                    }
+                }
+                authorizer.is_authorized(&cedar_request, &filtered_policies, &cedar_entities)
+            } else {
+                authorizer.is_authorized(&cedar_request, &cedar_policies, &cedar_entities)
+            }
         };
 
         Ok(answer.into())
@@ -618,7 +634,18 @@ impl Cedrus {
                     .project_cedar_policies
                     .get(project_id)
                     .ok_or(CedrusError::NotFound)?;
-                authorizer.is_authorized(&cedar_request, &cedar_policies, &cedar_entities)
+                
+                if let Some(annotation) = &self.exclude_policy_annotation {
+                    let mut filtered_policies = cedar_policy::PolicySet::new();
+                    for policy in cedar_policies.policies() {
+                        if policy.annotation(annotation).is_none() {
+                            let _ = filtered_policies.add(policy.clone());
+                        }
+                    }
+                    authorizer.is_authorized(&cedar_request, &filtered_policies, &cedar_entities)
+                } else {
+                    authorizer.is_authorized(&cedar_request, &cedar_policies, &cedar_entities)
+                }
             };
             answers.push(answer.into());
         }

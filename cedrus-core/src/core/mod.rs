@@ -302,6 +302,8 @@ pub struct ServerConfig {
     pub public_key: Option<String>,
     pub private_key: Option<String>,
     pub chains_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exclude_policy_annotation: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]
