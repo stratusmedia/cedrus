@@ -16,7 +16,7 @@ aws-config = { version = "1.8.12", features = ["behavior-version-latest"] }
 aws-sdk-dynamodb = "1.101.0"
 axum = { version = "0.8.7", features = [ "macros", "http2" ] }
 base64 = "0.22.1"
-cedar-policy = "4.8.2"
+cedar-policy = "4.10.0"
 chrono = { version = "0.4.42", features = ["serde"] }
 clap = { version = "4.5.53", features = ["derive"] }
 couch_rs = "0.13.0"

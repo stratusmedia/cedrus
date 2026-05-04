@@ -565,6 +565,18 @@ Use Valkey/Redis for distributed cache and pub/sub:
 
 ## Troubleshooting
 
+### Build Failures
+
+- Run `cargo check` to verify all types are valid
+- Check for missing dependencies in `Cargo.toml`
+- Ensure Rust toolchain is installed and compatible
+- Run `cargo test` to execute all tests
+- Required openssl dependencies: 
+  - `perl-FindBin`
+  - `perl-IPC-Cmd`
+  - `perl-File-Compare`
+  - `perl-Time-Piece`
+
 ### Connection Issues
 
 - Verify database is running and accessible
