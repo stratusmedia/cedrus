@@ -700,6 +700,7 @@ impl DynamoDb {
 impl Database for DynamoDb {
     async fn projects_load(&self, query: &Query) -> Result<PageList<Project>, DatabaseError> {
         let mut filter = FilterExpression::new_with_query(query)?;
+        let limit = filter.limit.unwrap_or(0) as usize;
 
         let condition = filter.add_eq("GSI1PK", AttributeValue::S(PROJECT_TYPE.to_string()));
 
@@ -731,6 +732,10 @@ impl Database for DynamoDb {
                     serde_json::to_string(&value)
                         .map_err(|e| DatabaseError::SerializationError(e.to_string()))?,
                 );
+            }
+
+            if limit > 0 && datas.len() >= limit {
+                break;
             }
         }
 
@@ -882,6 +887,7 @@ impl Database for DynamoDb {
         query: &Query,
     ) -> Result<PageList<ApiKey>, DatabaseError> {
         let mut filter = FilterExpression::new_with_query(query)?;
+        let limit = filter.limit.unwrap_or(0) as usize;
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
         let sk = format!("{}#{}#", pk, PROJECT_APIKEY_TYPE);
@@ -917,6 +923,10 @@ impl Database for DynamoDb {
                     serde_json::to_string(&value)
                         .map_err(|e| DatabaseError::SerializationError(e.to_string()))?,
                 );
+            }
+
+            if limit > 0 && datas.len() >= limit {
+                break;
             }
         }
 
@@ -1105,6 +1115,7 @@ impl Database for DynamoDb {
         query: &Query,
     ) -> Result<PageList<Entity>, DatabaseError> {
         let mut filter = FilterExpression::new_with_query(query)?;
+        let limit = filter.limit.unwrap_or(0) as usize;
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
         let sk = format!("{}#{}#", pk, PROJECT_ENTITY_TYPE);
@@ -1140,6 +1151,10 @@ impl Database for DynamoDb {
                     serde_json::to_string(&value)
                         .map_err(|e| DatabaseError::SerializationError(e.to_string()))?,
                 );
+            }
+
+            if limit > 0 && datas.len() >= limit {
+                break;
             }
         }
 
@@ -1208,6 +1223,7 @@ impl Database for DynamoDb {
         query: &Query,
     ) -> Result<PageHash<PolicyId, Policy>, DatabaseError> {
         let mut filter = FilterExpression::new_with_query(query)?;
+        let limit = filter.limit.unwrap_or(0) as usize;
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
         let sk = format!("{}#{}#", pk, PROJECT_POLICY_TYPE);
@@ -1234,6 +1250,7 @@ impl Database for DynamoDb {
         while let Some(page) = stream.next().await {
             let page =
                 page.map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
+
             for item in page.items.unwrap_or_default() {
                 let Some(policy_id_attr) = item.get("policyId") else {
                     continue;
@@ -1252,6 +1269,10 @@ impl Database for DynamoDb {
                     serde_json::to_string(&value)
                         .map_err(|e| DatabaseError::SerializationError(e.to_string()))?,
                 );
+            }
+
+            if limit > 0 && datas.len() >= limit {
+                break;
             }
         }
 
@@ -1320,6 +1341,7 @@ impl Database for DynamoDb {
         query: &Query,
     ) -> Result<PageHash<PolicyId, Template>, DatabaseError> {
         let mut filter = FilterExpression::new_with_query(query)?;
+        let limit = filter.limit.unwrap_or(0) as usize;
 
         let pk = format!("{}#{}", PROJECT_TYPE, project_id);
         let sk = format!("{}#{}#", pk, PROJECT_TEMPLATE_TYPE);
@@ -1364,6 +1386,10 @@ impl Database for DynamoDb {
                     serde_json::to_string(&value)
                         .map_err(|e| DatabaseError::SerializationError(e.to_string()))?,
                 );
+            }
+
+            if limit > 0 && datas.len() >= limit {
+                break;
             }
         }
 
