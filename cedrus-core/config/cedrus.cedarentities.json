@@ -1,25 +1,35 @@
 [
     {
         "uid": {
-            "type": "Cedrus::Group",
+            "type": "Group",
             "id": "Admins"
         },
         "attrs": {},
-        "parents": [],
+        "parents": [
+            {
+                "type": "Application",
+                "id": "Cedrus"
+            }
+        ],
         "tags": {}
     },
     {
         "uid": {
-            "type": "Cedrus::Group",
+            "type": "Group",
             "id": "Users"
         },
         "attrs": {},
-        "parents": [],
+        "parents": [
+            {
+                "type": "Application",
+                "id": "Cedrus"
+            }
+        ],
         "tags": {}
     },
     {
         "uid": {
-            "type": "Cedrus::User",
+            "type": "User",
             "id": "00000000-0000-0000-0000-000000000000"
         },
         "attrs": {
@@ -27,7 +37,11 @@
         },
         "parents": [
             {
-                "type": "Cedrus::Group",
+                "type": "Application",
+                "id": "Cedrus"
+            },
+            {
+                "type": "Group",
                 "id": "Admins"
             }
         ],
@@ -37,17 +51,22 @@
     },
     {
         "uid": {
-            "type": "Cedrus::Project",
+            "type": "Project",
             "id": "00000000-0000-0000-0000-000000000000"
         },
         "attrs": {
             "enabled": true,
             "owner": {
-                "type": "Cedrus::User",
+                "type": "User",
                 "id": "00000000-0000-0000-0000-000000000000"
             }
         },
-        "parents": [],
+        "parents": [
+            {
+                "type": "Application",
+                "id": "Cedrus"
+            }
+        ],
         "tags": {
             "name": "Cedrus Admin Project"
         }

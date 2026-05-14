@@ -14,14 +14,14 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use cedrus_core::{
-    CedrusActions, PageHash, PageList, Selector,
+    PageHash, PageList, Selector,
     core::{
         IdentitySource,
         project::{ApiKey, Project},
     },
 };
 
-use crate::{AppError, AppJson, AppState, QueryParams};
+use crate::{AppError, AppJson, AppState, CedrusActions, CedrusEntities, QueryParams};
 
 #[derive(Default, Clone, Serialize, Deserialize, ToSchema)]
 pub struct IsAuthorizedRequest {
@@ -62,19 +62,23 @@ async fn projects_get(
     State(state): State<Arc<AppState>>,
     Query(query_params): Query<QueryParams>,
 ) -> Result<AppJson<PageList<Project>>, AppError> {
-    let page = if state.cedrus.is_allow(
+    if !state.cedrus.is_allow(
         principal.clone(),
-        CedrusActions::GetProject.value(),
-        Project::entity_uid(Uuid::nil()),
+        CedrusActions::GetProjects.value(),
+        CedrusEntities::ApplicationCedrus.value(),
     ) {
-        state.cedrus.projects_find(query_params.into()).await?
-    } else {
-        let mut query: cedrus_core::Query = query_params.into();
-        let rol = HashMap::from([(principal.to_string(), Selector::Exists(true))]);
-        let roles = HashMap::from([("roles".to_string(), Selector::Record(rol))]);
-        query.selector = Some(Selector::Record(roles));
-        state.cedrus.projects_find(query).await?
-    };
+        return Err(AppError::Forbidden);
+    }
+
+    let mut page = state.cedrus.projects_find(query_params.into()).await?;
+
+    page.items.retain(|p| {
+        state.cedrus.is_allow(
+            principal.clone(),
+            CedrusActions::GetProject.value(),
+            Project::entity_uid(p.id),
+        )
+    });
 
     Ok(AppJson(page))
 }
@@ -97,6 +101,14 @@ async fn projects_post(
     State(state): State<Arc<AppState>>,
     Json(mut project): Json<Project>,
 ) -> Result<AppJson<Project>, AppError> {
+    if !state.cedrus.is_allow(
+        principal.clone(),
+        CedrusActions::PostProject.value(),
+        CedrusEntities::ApplicationCedrus.value(),
+    ) {
+        return Err(AppError::Forbidden);
+    }
+
     project.id = Uuid::now_v7();
     let project = state.cedrus.project_create(project, principal).await?;
 
@@ -216,7 +228,7 @@ async fn projects_id_delete(
         ("id" = Uuid, Path, description = "Project id"),
     ),
     responses(
-        (status = 200, description = "Entities page", body = Option<IdentitySource>)
+        (status = 200, description = "Identity source", body = Option<IdentitySource>)
     ),
     security(
         ("bearerAuth" = []),
@@ -250,7 +262,7 @@ async fn projects_id_identity_source_get(
     ),
     request_body = IdentitySource,
     responses(
-        (status = 200, description = "Entities added")
+        (status = 200, description = "Identity source", body = IdentitySource)
     ),
     security(
         ("bearerAuth" = []),
@@ -287,7 +299,7 @@ async fn projects_id_identity_source_put(
         ("id" = Uuid, Path, description = "Project id")
     ),
     responses(
-        (status = 200, description = "Entities deleted")
+        (status = 200, description = "Identity source deleted")
     ),
     security(
         ("bearerAuth" = []),
@@ -421,7 +433,7 @@ async fn projects_id_schema_delete(
         ("id" = Uuid, Path, description = "Project id"),
     ),
     responses(
-        (status = 200, description = "Entities page", body = CedarSyntax)
+        (status = 200, description = "Schema in Cedar syntax", body = CedarSyntax)
     ),
     security(
         ("bearerAuth" = []),
@@ -469,7 +481,7 @@ async fn projects_id_schema_cedar_get(
     ),
     request_body = CedarSyntax,
     responses(
-        (status = 200, description = "Entities added")
+        (status = 200, description = "Schema in Cedar syntax")
     ),
     security(
         ("bearerAuth" = []),
@@ -482,7 +494,7 @@ async fn projects_id_schema_cedar_put(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(syntax): Json<CedarSyntax>,
-) -> Result<(), AppError> {
+) -> Result<AppJson<Schema>, AppError> {
     if !state.cedrus.is_allow(
         principal,
         CedrusActions::PutProjectSchema.value(),
@@ -502,12 +514,15 @@ async fn projects_id_schema_cedar_put(
             let schema: Schema = serde_json::from_value(json).map_err(AppError::SerdeJsonError)?;
             schema
         }
-        None => return Ok(()),
+        None => return Err(AppError::BadRequest),
     };
 
-    state.cedrus.project_schema_update(id, schema).await?;
+    state
+        .cedrus
+        .project_schema_update(id, schema.clone())
+        .await?;
 
-    Ok(())
+    Ok(AppJson(schema))
 }
 
 #[utoipa::path(
@@ -715,7 +730,7 @@ async fn projects_id_entities_delete(
     responses(
         (status = 200, description = "Get Policies", body = PageHash<PolicyId, Policy>),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -755,7 +770,7 @@ async fn projects_id_policies_get(
     responses(
         (status = 200, description = "Get Policy Cedar", body = CedarSyntax),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -795,7 +810,7 @@ async fn projects_id_policies_validate_cedar_post(
     responses(
         (status = 200, description = "validate json policy", body = CedarSyntax),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -834,7 +849,7 @@ async fn projects_id_policies_validate_json_post(
     responses(
         (status = 200, description = "Get Policy Cedar", body = CedarSyntax),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -887,7 +902,7 @@ async fn projects_id_policies_policy_id_cedar_get(
     responses(
         (status = 200, description = "Get Policy Cedar"),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -903,7 +918,7 @@ async fn projects_id_policies_policy_id_cedar_put(
 ) -> Result<(), AppError> {
     if !state.cedrus.is_allow(
         principal,
-        CedrusActions::GetProjectPolicies.value(),
+        CedrusActions::PostProjectPolicies.value(),
         Project::entity_uid(id),
     ) {
         return Err(AppError::Forbidden);
@@ -936,7 +951,7 @@ async fn projects_id_policies_policy_id_cedar_put(
     responses(
         (status = 200, description = "add policies"),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -971,9 +986,9 @@ async fn projects_id_policies_post(
     ),
     request_body = Vec<PolicyId>,
     responses(
-        (status = 200, description = "add policies"),
+        (status = 200, description = "delete policies"),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -1010,7 +1025,7 @@ async fn projects_id_policies_delete(
     responses(
         (status = 200, description = "get templates", body = PageHash<PolicyId, Template>),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -1050,7 +1065,7 @@ async fn projects_id_templates_get(
     responses(
         (status = 200, description = "add templates"),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -1087,7 +1102,7 @@ async fn projects_id_templates_post(
     responses(
         (status = 200, description = "delete templates"),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -1127,7 +1142,7 @@ async fn projects_id_templates_delete(
     responses(
         (status = 200, description = "Get Template Cedar", body = CedarSyntax),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -1142,7 +1157,7 @@ async fn projects_id_templates_template_id_cedar_get(
 ) -> Result<AppJson<CedarSyntax>, AppError> {
     if !state.cedrus.is_allow(
         principal,
-        CedrusActions::GetProjectPolicies.value(),
+        CedrusActions::GetProjectTemplates.value(),
         Project::entity_uid(id),
     ) {
         return Err(AppError::Forbidden);
@@ -1175,7 +1190,7 @@ async fn projects_id_templates_template_id_cedar_get(
     responses(
         (status = 200, description = "update template cedar"),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -1191,7 +1206,7 @@ async fn projects_id_templates_template_id_cedar_put(
 ) -> Result<(), AppError> {
     if !state.cedrus.is_allow(
         principal,
-        CedrusActions::GetProjectPolicies.value(),
+        CedrusActions::PostProjectTemplates.value(),
         Project::entity_uid(id),
     ) {
         return Err(AppError::Forbidden);
@@ -1224,7 +1239,7 @@ async fn projects_id_templates_template_id_cedar_put(
     responses(
         (status = 200, description = "get template links", body = PageList<TemplateLink>),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -1262,9 +1277,9 @@ async fn projects_id_template_links_get(
     ),
     request_body = Vec<TemplateLink>,
     responses(
-        (status = 200, description = "add policies"),
+        (status = 200, description = "add template links"),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -1304,7 +1319,7 @@ async fn projects_id_template_links_post(
     responses(
         (status = 200, description = "delete template links"),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -1342,9 +1357,9 @@ async fn projects_id_template_links_delete(
         ("templateId" = String, Path, description = "Template Id"),
     ),
     responses(
-        (status = 200, description = "Get Template Cedar", body = CedarSyntax),
+        (status = 200, description = "Get Template Link Cedar", body = CedarSyntax),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -1359,7 +1374,7 @@ async fn projects_id_template_links_policy_id_cedar_get(
 ) -> Result<AppJson<CedarSyntax>, AppError> {
     if !state.cedrus.is_allow(
         principal,
-        CedrusActions::GetProjectPolicies.value(),
+        CedrusActions::GetProjectTemplateLinks.value(),
         Project::entity_uid(id),
     ) {
         return Err(AppError::Forbidden);
@@ -1392,7 +1407,7 @@ async fn projects_id_template_links_policy_id_cedar_get(
     responses(
         (status = 200, description = "update template link cedar"),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -1408,7 +1423,7 @@ async fn projects_id_template_links_policy_id_cedar_put(
 ) -> Result<(), AppError> {
     if !state.cedrus.is_allow(
         principal,
-        CedrusActions::GetProjectPolicies.value(),
+        CedrusActions::PostProjectTemplateLinks.value(),
         Project::entity_uid(id),
     ) {
         return Err(AppError::Forbidden);
@@ -1440,7 +1455,7 @@ async fn projects_id_template_links_policy_id_cedar_put(
     responses(
         (status = 200, description = "Get Policy Set Cedar Syntax", body = PolicySet),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -1496,7 +1511,7 @@ async fn projects_id_policy_set_get(
     responses(
         (status = 200, description = "Get Policy Set Cedar Syntax", body = CedarSyntax),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -1528,12 +1543,16 @@ async fn projects_id_policy_set_cedar_get(
         .project_templates_find(id, query.clone())
         .await?
         .items;
-    // let template_links = state.cedrus.project_template_links_find(id, query).await?.items;
+    let template_links = state
+        .cedrus
+        .project_template_links_find(id, query)
+        .await?
+        .items;
 
     let policy_set = PolicySet {
         static_policies,
         templates,
-        template_links: Vec::new(),
+        template_links,
     };
 
     let cedar_policy_set: cedar_policy::PolicySet = policy_set.try_into()?;
@@ -1552,7 +1571,7 @@ async fn projects_id_policy_set_cedar_get(
     responses(
         (status = 200, description = "is authorized", body = Response),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),
@@ -1595,7 +1614,7 @@ async fn projects_id_is_authorized_post(
     responses(
         (status = 200, description = "is authorized", body = Vec<Response>),
         (status = 400, description = "Bad request"),
-        (status = 404, description = "Store not found")
+        (status = 404, description = "Project not found")
     ),
     security(
         ("bearerAuth" = []),

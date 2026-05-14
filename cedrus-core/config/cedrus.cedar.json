@@ -1,143 +1,153 @@
 {
     "staticPolicies": {
-        "CedrusAdminRole": {
+        "CedrusAdmin": {
             "effect": "permit",
             "principal": {
                 "op": "in",
-                "entity": { "type": "Cedrus::Group", "id": "Admins" }
+                "entity": {
+                    "type": "Group",
+                    "id": "Admins"
+                }
             },
             "action": {
                 "op": "All"
             },
             "resource": {
-                "op": "All"
+                "op": "in",
+                "entity": {
+                    "type": "Application",
+                    "id": "Cedrus"
+                }
             },
             "conditions": [],
             "annotations": {
-                "id": "CedrusAdminRole"
+                "id": "CedrusAdmin"
             }
-        }
-    },
-    "templates": {
-        "ProjectAdminRole": {
+        },
+        "ProjectAdmin": {
             "effect": "permit",
             "principal": {
-                "op": "==",
-                "slot": "?principal"
+                "op": "All"
+            },
+            "action": {
+                "op": "All"
+            },
+            "resource": {
+                "op": "is",
+                "entity_type": "Project"
+            },
+            "conditions": [
+                {
+                    "kind": "when",
+                    "body": {
+                        "&&": {
+                            "left": {
+                                "==": {
+                                    "left": {
+                                        ".": {
+                                            "left": {
+                                                "Var": "principal"
+                                            },
+                                            "attr": "enabled"
+                                        }
+                                    },
+                                    "right": {
+                                        "Value": true
+                                    }
+                                }
+                            },
+                            "right": {
+                                "&&": {
+                                    "left": {
+                                        "==": {
+                                            "left": {
+                                                ".": {
+                                                    "left": {
+                                                        "Var": "resource"
+                                                    },
+                                                    "attr": "enabled"
+                                                }
+                                            },
+                                            "right": {
+                                                "Value": true
+                                            }
+                                        }
+                                    },
+                                    "right": {
+                                        "==": {
+                                            "left": {
+                                                "Var": "principal"
+                                            },
+                                            "right": {
+                                                ".": {
+                                                    "left": {
+                                                        "Var": "resource"
+                                                    },
+                                                    "attr": "owner"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "annotations": {
+                "id": "ProjectAdmin"
+            }
+        },
+        "Projects": {
+            "effect": "permit",
+            "principal": {
+                "op": "All"
             },
             "action": {
                 "op": "in",
                 "entities": [
                     {
-                        "type": "Cedrus::Action",
+                        "type": "Action",
                         "id": "getProjects"
                     },
                     {
-                        "type": "Cedrus::Action",
+                        "type": "Action",
                         "id": "postProject"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "getProject"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "putProject"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "deleteProject"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "getProjectSchema"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "putProjectSchema"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "deleteProjectSchema"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "getProjectEntities"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "postProjectEntities"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "deleteProjectEntities"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "getProjectPolicies"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "postProjectPolicies"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "deleteProjectPolicies"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "getProjectTemplates"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "postProjectTemplates"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "deleteProjectTemplates"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "getProjectTemplateLinks"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "postProjectTemplateLinks"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "deleteProjectTemplateLinks"
-                    },
-                    {
-                        "type": "Cedrus::Action",
-                        "id": "postProjectIsAuthorized"
                     }
                 ]
             },
             "resource": {
-                "op": "in",
-                "slot": "?resource"
+                "op": "==",
+                "entity": {
+                    "type": "Application",
+                    "id": "Cedrus"
+                }
             },
-            "conditions": [],
+            "conditions": [
+                {
+                    "kind": "when",
+                    "body": {
+                        "==": {
+                            "left": {
+                                ".": {
+                                    "left": {
+                                        "Var": "principal"
+                                    },
+                                    "attr": "enabled"
+                                }
+                            },
+                            "right": {
+                                "Value": true
+                            }
+                        }
+                    }
+                }
+            ],
             "annotations": {
-                "id": "ProjectAdminRole"
+                "id": "Projects"
             }
         }
     },
-    "templateLinks": [
-        {
-            "templateId": "ProjectAdminRole",
-            "newId": "00000000-0000-0000-0000-000000000000_ProjectAdminRole",
-            "values": {
-                "?principal": {
-                    "type": "Cedrus::User",
-                    "id": "00000000-0000-0000-0000-000000000000"
-                },
-                "?resource": {
-                    "type": "Cedrus::Project",
-                    "id": "00000000-0000-0000-0000-000000000000"
-                }
-            }
-        }
-    ]
+    "templates": {},
+    "templateLinks": []
 }

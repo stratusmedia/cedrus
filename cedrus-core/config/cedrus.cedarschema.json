@@ -1,8 +1,18 @@
 {
-    "Cedrus": {
+    "": {
         "commonTypes": {},
         "entityTypes": {
-            "Group": {},
+            "Application": {
+                "enum": [
+                    "Cedrus"
+                ]
+            },
+            "Group": {
+                "memberOfTypes": [
+                    "Application",
+                    "Group"
+                ]
+            },
             "User": {
                 "shape": {
                     "type": "Record",
@@ -12,7 +22,10 @@
                         }
                     }
                 },
-                "memberOfTypes": ["Group"],
+                "memberOfTypes": [
+                    "Application",
+                    "Group"
+                ],
                 "tags": {
                     "type": "String"
                 }
@@ -26,16 +39,39 @@
                         },
                         "owner": {
                             "type": "Entity",
-                            "name": "Cedrus::User"
+                            "name": "User"
                         }
                     }
                 },
+                "memberOfTypes": [
+                    "Application"
+                ],
                 "tags": {
                     "type": "String"
                 }
             }
         },
         "actions": {
+            "getProjects": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Application"
+                    ]
+                }
+            },
+            "postProject": {
+                "appliesTo": {
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "resourceTypes": [
+                        "Application"
+                    ]
+                }
+            },
             "getProject": {
                 "appliesTo": {
                     "principalTypes": [

@@ -49,6 +49,17 @@ impl From<String> for EntityUid {
     }
 }
 
+impl From<&str> for EntityUid {
+    fn from(value: &str) -> Self {
+        let mut parts = value.split("::");
+        let list: Vec<&str> = parts.by_ref().collect();
+        let (last, elements) = list.split_last().unwrap();
+        let r#type = elements.join("::");
+        let id = last.to_string();
+        Self { r#type, id }
+    }
+}
+
 impl From<cedar_policy::EntityUid> for EntityUid {
     fn from(value: cedar_policy::EntityUid) -> Self {
         Self {
@@ -647,16 +658,16 @@ pub mod schema {
     #[serde(rename_all = "camelCase", default)]
     pub struct EntityType {
         #[serde(skip_serializing_if = "Option::is_none")]
-        member_of_types: Option<Vec<String>>,
+        pub member_of_types: Option<Vec<String>>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        shape: Option<TypeJson>,
+        pub shape: Option<TypeJson>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        tags: Option<TypeJson>,
+        pub tags: Option<TypeJson>,
         #[serde(rename = "enum")]
         #[serde(skip_serializing_if = "Option::is_none")]
-        r#enum: Option<Vec<String>>,
+        pub r#enum: Option<Vec<String>>,
         #[serde(skip_serializing_if = "HashMap::is_empty")]
-        annotations: HashMap<String, String>,
+        pub annotations: HashMap<String, String>,
     }
 
     impl From<proto::schema::EntityType> for EntityType {
@@ -758,10 +769,10 @@ pub mod schema {
     #[schema(as = schema::Namespace)]
     #[serde(rename_all = "camelCase", default)]
     pub struct Namespace {
-        entity_types: HashMap<String, EntityType>,
-        actions: HashMap<String, Action>,
+        pub entity_types: HashMap<String, EntityType>,
+        pub actions: HashMap<String, Action>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        common_types: Option<HashMap<String, TypeJson>>,
+        pub common_types: Option<HashMap<String, TypeJson>>,
     }
 
     impl From<proto::schema::Namespace> for Namespace {

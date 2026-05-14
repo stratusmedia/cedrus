@@ -27,7 +27,6 @@ use crate::{
 };
 
 pub const DEFAULT_LIMIT: usize = 1000;
-const TEMPLATE_PROJECT_ADMIN_ROLE: &str = "ProjectAdminRole";
 
 pub struct Authorizer {
     pub identity_source: IdentitySource,
@@ -261,145 +260,6 @@ impl Query {
     }
 }
 
-pub enum CedrusActions {
-    GetProjects,
-    PostProject,
-    GetProject,
-    PutProject,
-    DeleteProject,
-    GetProjectIdentitySource,
-    PutProjectIdentitySource,
-    DeleteProjectIdentitySource,
-    GetProjectApiKey,
-    PostProjectApiKey,
-    PutProjectApiKey,
-    DeleteProjectApiKey,
-    GetProjectSchema,
-    PutProjectSchema,
-    DeleteProjectSchema,
-    PostProjectEntities,
-    GetProjectEntities,
-    DeleteProjectEntities,
-    PostProjectPolicies,
-    GetProjectPolicies,
-    DeleteProjectPolicies,
-    PostProjectTemplates,
-    GetProjectTemplates,
-    DeleteProjectTemplates,
-    PostProjectTemplateLinks,
-    GetProjectTemplateLinks,
-    DeleteProjectTemplateLinks,
-    PostProjectIsAuthorized,
-}
-
-impl CedrusActions {
-    pub fn value(&self) -> EntityUid {
-        match *self {
-            CedrusActions::GetProjects => {
-                EntityUid::new("Cedrus::Action".to_string(), "getProjects".to_string())
-            }
-            CedrusActions::PostProject => {
-                EntityUid::new("Cedrus::Action".to_string(), "postProject".to_string())
-            }
-            CedrusActions::GetProject => {
-                EntityUid::new("Cedrus::Action".to_string(), "getProject".to_string())
-            }
-            CedrusActions::PutProject => {
-                EntityUid::new("Cedrus::Action".to_string(), "putProject".to_string())
-            }
-            CedrusActions::DeleteProject => {
-                EntityUid::new("Cedrus::Action".to_string(), "deleteProject".to_string())
-            }
-            CedrusActions::GetProjectIdentitySource => {
-                EntityUid::new("Cedrus::Action".to_string(), "getProjectSchema".to_string())
-            }
-            CedrusActions::PutProjectIdentitySource => {
-                EntityUid::new("Cedrus::Action".to_string(), "putProjectSchema".to_string())
-            }
-            CedrusActions::DeleteProjectIdentitySource => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "deleteProjectSchema".to_string(),
-            ),
-            CedrusActions::GetProjectApiKey => {
-                EntityUid::new("Cedrus::Action".to_string(), "getProjectApiKey".to_string())
-            }
-            CedrusActions::PostProjectApiKey => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "postProjectApiKey".to_string(),
-            ),
-            CedrusActions::PutProjectApiKey => {
-                EntityUid::new("Cedrus::Action".to_string(), "putProjectApiKey".to_string())
-            }
-            CedrusActions::DeleteProjectApiKey => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "deleteProjectApiKey".to_string(),
-            ),
-            CedrusActions::GetProjectSchema => {
-                EntityUid::new("Cedrus::Action".to_string(), "getProjectSchema".to_string())
-            }
-            CedrusActions::PutProjectSchema => {
-                EntityUid::new("Cedrus::Action".to_string(), "putProjectSchema".to_string())
-            }
-            CedrusActions::DeleteProjectSchema => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "deleteProjectSchema".to_string(),
-            ),
-            CedrusActions::PostProjectEntities => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "postProjectEntities".to_string(),
-            ),
-            CedrusActions::GetProjectEntities => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "getProjectEntities".to_string(),
-            ),
-            CedrusActions::DeleteProjectEntities => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "deleteProjectEntities".to_string(),
-            ),
-            CedrusActions::PostProjectPolicies => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "postProjectPolicies".to_string(),
-            ),
-            CedrusActions::GetProjectPolicies => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "getProjectPolicies".to_string(),
-            ),
-            CedrusActions::DeleteProjectPolicies => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "deleteProjectPolicies".to_string(),
-            ),
-            CedrusActions::PostProjectTemplates => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "postProjectTemplates".to_string(),
-            ),
-            CedrusActions::GetProjectTemplates => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "getProjectTemplates".to_string(),
-            ),
-            CedrusActions::DeleteProjectTemplates => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "deleteProjectTemplates".to_string(),
-            ),
-            CedrusActions::PostProjectTemplateLinks => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "postProjectTemplateLinks".to_string(),
-            ),
-            CedrusActions::GetProjectTemplateLinks => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "getProjectTemplateLinks".to_string(),
-            ),
-            CedrusActions::DeleteProjectTemplateLinks => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "deleteProjectTemplateLinks".to_string(),
-            ),
-            CedrusActions::PostProjectIsAuthorized => EntityUid::new(
-                "Cedrus::Action".to_string(),
-                "postProjectIsAuthorized".to_string(),
-            ),
-        }
-    }
-}
-
 // The kinds of errors we can hit in our application.
 #[derive(Debug)]
 pub enum CedrusError {
@@ -519,7 +379,11 @@ pub enum EventType {
     ReloadAll,
     ProjectCreate(Uuid),
     ProjectUpdate(Uuid),
-    ProjectRemove(Uuid),
+    ProjectRemove(Uuid, HashSet<String>),
+
+    ProjectAddApikeys(Uuid, HashSet<Uuid>),
+    ProjectRemoveApikeys(Uuid, HashSet<String>),
+
     ProjectPutIdentitySource(Uuid),
     ProjectRemoveIdentitySource(Uuid),
     ProjectPutSchema(Uuid),
@@ -559,10 +423,28 @@ impl Event {
         }
     }
 
-    pub fn project_remove(sender: Uuid, project_id: Uuid) -> Self {
+    pub fn project_remove(sender: Uuid, project_id: Uuid, api_keys: HashSet<String>) -> Self {
         Self {
             sender,
-            msg: EventType::ProjectRemove(project_id),
+            msg: EventType::ProjectRemove(project_id, api_keys),
+        }
+    }
+
+    pub fn project_add_apikeys(sender: Uuid, project_id: Uuid, api_keys: HashSet<Uuid>) -> Self {
+        Self {
+            sender,
+            msg: EventType::ProjectAddApikeys(project_id, api_keys),
+        }
+    }
+
+    pub fn project_remove_apikeys(
+        sender: Uuid,
+        project_id: Uuid,
+        api_keys: HashSet<String>,
+    ) -> Self {
+        Self {
+            sender,
+            msg: EventType::ProjectRemoveApikeys(project_id, api_keys),
         }
     }
 

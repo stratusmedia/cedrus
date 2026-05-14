@@ -52,6 +52,159 @@ impl AppState {
     }
 }
 
+pub enum CedrusActions {
+    GetProjects,
+    PostProject,
+    GetProject,
+    PutProject,
+    DeleteProject,
+    GetProjectIdentitySource,
+    PutProjectIdentitySource,
+    DeleteProjectIdentitySource,
+    GetProjectApiKey,
+    PostProjectApiKey,
+    PutProjectApiKey,
+    DeleteProjectApiKey,
+    GetProjectSchema,
+    PutProjectSchema,
+    DeleteProjectSchema,
+    PostProjectEntities,
+    GetProjectEntities,
+    DeleteProjectEntities,
+    PostProjectPolicies,
+    GetProjectPolicies,
+    DeleteProjectPolicies,
+    PostProjectTemplates,
+    GetProjectTemplates,
+    DeleteProjectTemplates,
+    PostProjectTemplateLinks,
+    GetProjectTemplateLinks,
+    DeleteProjectTemplateLinks,
+    PostProjectIsAuthorized,
+}
+
+impl CedrusActions {
+    pub fn value(&self) -> EntityUid {
+        match *self {
+            CedrusActions::GetProjects => {
+                EntityUid::new("Action".to_string(), "getProjects".to_string())
+            }
+            CedrusActions::PostProject => {
+                EntityUid::new("Action".to_string(), "postProject".to_string())
+            }
+            CedrusActions::GetProject => {
+                EntityUid::new("Action".to_string(), "getProject".to_string())
+            }
+            CedrusActions::PutProject => {
+                EntityUid::new("Action".to_string(), "putProject".to_string())
+            }
+            CedrusActions::DeleteProject => {
+                EntityUid::new("Action".to_string(), "deleteProject".to_string())
+            }
+            CedrusActions::GetProjectIdentitySource => {
+                EntityUid::new("Action".to_string(), "getProjectSchema".to_string())
+            }
+            CedrusActions::PutProjectIdentitySource => {
+                EntityUid::new("Action".to_string(), "putProjectSchema".to_string())
+            }
+            CedrusActions::DeleteProjectIdentitySource => {
+                EntityUid::new("Action".to_string(), "deleteProjectSchema".to_string())
+            }
+            CedrusActions::GetProjectApiKey => {
+                EntityUid::new("Action".to_string(), "getProjectApiKey".to_string())
+            }
+            CedrusActions::PostProjectApiKey => {
+                EntityUid::new("Action".to_string(), "postProjectApiKey".to_string())
+            }
+            CedrusActions::PutProjectApiKey => {
+                EntityUid::new("Action".to_string(), "putProjectApiKey".to_string())
+            }
+            CedrusActions::DeleteProjectApiKey => {
+                EntityUid::new("Action".to_string(), "deleteProjectApiKey".to_string())
+            }
+            CedrusActions::GetProjectSchema => {
+                EntityUid::new("Action".to_string(), "getProjectSchema".to_string())
+            }
+            CedrusActions::PutProjectSchema => {
+                EntityUid::new("Action".to_string(), "putProjectSchema".to_string())
+            }
+            CedrusActions::DeleteProjectSchema => {
+                EntityUid::new("Action".to_string(), "deleteProjectSchema".to_string())
+            }
+            CedrusActions::PostProjectEntities => {
+                EntityUid::new("Action".to_string(), "postProjectEntities".to_string())
+            }
+            CedrusActions::GetProjectEntities => {
+                EntityUid::new("Action".to_string(), "getProjectEntities".to_string())
+            }
+            CedrusActions::DeleteProjectEntities => {
+                EntityUid::new("Action".to_string(), "deleteProjectEntities".to_string())
+            }
+            CedrusActions::PostProjectPolicies => {
+                EntityUid::new("Action".to_string(), "postProjectPolicies".to_string())
+            }
+            CedrusActions::GetProjectPolicies => {
+                EntityUid::new("Action".to_string(), "getProjectPolicies".to_string())
+            }
+            CedrusActions::DeleteProjectPolicies => {
+                EntityUid::new("Action".to_string(), "deleteProjectPolicies".to_string())
+            }
+            CedrusActions::PostProjectTemplates => {
+                EntityUid::new("Action".to_string(), "postProjectTemplates".to_string())
+            }
+            CedrusActions::GetProjectTemplates => {
+                EntityUid::new("Action".to_string(), "getProjectTemplates".to_string())
+            }
+            CedrusActions::DeleteProjectTemplates => {
+                EntityUid::new("Action".to_string(), "deleteProjectTemplates".to_string())
+            }
+            CedrusActions::PostProjectTemplateLinks => {
+                EntityUid::new("Action".to_string(), "postProjectTemplateLinks".to_string())
+            }
+            CedrusActions::GetProjectTemplateLinks => {
+                EntityUid::new("Action".to_string(), "getProjectTemplateLinks".to_string())
+            }
+            CedrusActions::DeleteProjectTemplateLinks => EntityUid::new(
+                "Action".to_string(),
+                "deleteProjectTemplateLinks".to_string(),
+            ),
+            CedrusActions::PostProjectIsAuthorized => {
+                EntityUid::new("Action".to_string(), "postProjectIsAuthorized".to_string())
+            }
+        }
+    }
+}
+
+pub enum CedrusEntities {
+    ApplicationCedrus,
+    GroupAdmins,
+    GroupUsers,
+    UserAdmin,
+    ProjectAdmin,
+}
+
+impl CedrusEntities {
+    pub fn value(&self) -> EntityUid {
+        match *self {
+            CedrusEntities::ApplicationCedrus => {
+                EntityUid::new("Application".to_string(), "Cedrus".to_string())
+            }
+            CedrusEntities::GroupAdmins => {
+                EntityUid::new("Group".to_string(), "Admins".to_string())
+            }
+            CedrusEntities::GroupUsers => EntityUid::new("Group".to_string(), "Users".to_string()),
+            CedrusEntities::UserAdmin => EntityUid::new(
+                "User".to_string(),
+                "00000000-0000-0000-0000-000000000000".to_string(),
+            ),
+            CedrusEntities::ProjectAdmin => EntityUid::new(
+                "Project".to_string(),
+                "00000000-0000-0000-0000-000000000000".to_string(),
+            ),
+        }
+    }
+}
+
 // The kinds of errors we can hit in our application.
 #[derive(Debug)]
 pub enum AppError {
