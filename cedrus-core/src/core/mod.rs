@@ -298,7 +298,6 @@ impl Default for PubSubConfig {
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
-    pub api_key: String,
     pub public_key: Option<String>,
     pub private_key: Option<String>,
     pub chains_key: Option<String>,

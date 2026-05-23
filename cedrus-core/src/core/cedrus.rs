@@ -96,40 +96,40 @@ impl Cedrus {
         }
     }
 
-    pub async fn init_project(state: &Cedrus, config: &CedrusConfig) -> Result<(), CedrusError> {
+    pub async fn init_admin_project(
+        &mut self,
+        config: &CedrusConfig,
+        admin_api_key: String,
+    ) -> Result<(), CedrusError> {
         // Find project with id nil
-        if let Some(project) = state.db.project_load(&Uuid::nil()).await? {
-            let api_keys = state
+        if let Some(project) = self.db.project_load(&Uuid::nil()).await? {
+            let api_keys = self
                 .db
                 .project_apikeys_load(&project.id, &Query::new())
                 .await?;
             let found = api_keys.items.iter().find(|ak| ak.id == Uuid::nil());
 
             if let Some(api_key) = found {
-                if api_key.key != config.server.api_key {
+                if api_key.key != admin_api_key {
                     let mut api_key = api_key.clone();
-                    api_key.key = config.server.api_key.clone();
+                    api_key.key = admin_api_key;
                     api_key.updated_at = chrono::Utc::now();
-                    state
-                        .db
+                    self.db
                         .project_apikeys_save(&project.id, &vec![api_key])
                         .await?;
                 }
             } else {
                 let api_key = ApiKey::new(
                     Uuid::nil(),
-                    config.server.api_key.clone(),
+                    admin_api_key,
                     "Admin API Key".to_string(),
                     Uuid::nil(),
                     project.owner.clone(),
                 );
-                state
-                    .db
+                self.db
                     .project_apikeys_save(&project.id, &vec![api_key])
                     .await?;
             }
-
-            state.db.project_save(&project).await?;
         } else {
             let schema_str = include_str!("../../config/cedrus.cedarschema.json");
             let entities_str = include_str!("../../config/cedrus.cedarentities.json");
@@ -148,44 +148,38 @@ impl Cedrus {
                 updated_at: now,
                 ..Default::default()
             };
-            state.db.project_save(&project).await?;
+            self.db.project_save(&project).await?;
 
             let api_key = ApiKey::new(
                 Uuid::nil(),
-                config.server.api_key.clone(),
+                admin_api_key,
                 "Admin API Key".to_string(),
                 Uuid::nil(),
                 owner.clone(),
             );
-            state
-                .db
+            self.db
                 .project_apikeys_save(&project.id, &vec![api_key])
                 .await?;
 
-            state.db.project_schema_save(&project.id, &schema).await?;
+            self.db.project_schema_save(&project.id, &schema).await?;
 
-            state
-                .db
+            self.db
                 .project_entities_save(&project.id, &entities)
                 .await?;
 
-            state
-                .db
+            self.db
                 .project_policies_save(&project.id, &policy_set.static_policies)
                 .await?;
-            state
-                .db
+            self.db
                 .project_templates_save(&project.id, &policy_set.templates)
                 .await?;
-            state
-                .db
+            self.db
                 .project_template_links_save(&project.id, &policy_set.template_links)
                 .await?;
         }
 
         if let Some(identity_source) = &config.identity_source {
-            state
-                .db
+            self.db
                 .project_identity_source_save(&Uuid::nil(), identity_source)
                 .await?;
         }
@@ -193,56 +187,49 @@ impl Cedrus {
         Ok(())
     }
 
-    pub async fn init_cache(state: &Cedrus) -> Result<(), CedrusError> {
+    pub async fn init_cache(&mut self) -> Result<(), CedrusError> {
         let query = Query::new();
-        let projects = state.db.projects_load(&query).await?;
+        let projects = self.db.projects_load(&query).await?;
 
         let query = Query::new();
         for project in projects.items {
-            state.cache.project_clear(&project.id).await?;
+            self.cache.project_clear(&project.id).await?;
 
-            let apikeys = state.db.project_apikeys_load(&project.id, &query).await?;
-            let entities = state.db.project_entities_load(&project.id, &query).await?;
-            let static_policies = state.db.project_policies_load(&project.id, &query).await?;
-            let templates = state.db.project_templates_load(&project.id, &query).await?;
-            let template_links = state
+            let apikeys = self.db.project_apikeys_load(&project.id, &query).await?;
+            let entities = self.db.project_entities_load(&project.id, &query).await?;
+            let static_policies = self.db.project_policies_load(&project.id, &query).await?;
+            let templates = self.db.project_templates_load(&project.id, &query).await?;
+            let template_links = self
                 .db
                 .project_template_links_load(&project.id, &query)
                 .await?;
 
-            state.cache.project_set(&project).await?;
+            self.cache.project_set(&project).await?;
 
-            if let Some(identity_source) =
-                state.db.project_identity_source_load(&project.id).await?
+            if let Some(identity_source) = self.db.project_identity_source_load(&project.id).await?
             {
-                state
-                    .cache
+                self.cache
                     .project_set_identity_source(&project.id, &identity_source)
                     .await?;
             }
 
-            if let Some(schema) = state.db.project_schema_load(&project.id).await? {
-                state.cache.project_set_schema(&project.id, &schema).await?;
+            if let Some(schema) = self.db.project_schema_load(&project.id).await? {
+                self.cache.project_set_schema(&project.id, &schema).await?;
             }
 
-            state
-                .cache
+            self.cache
                 .project_set_apikeys(&project.id, &apikeys.items)
                 .await?;
-            state
-                .cache
+            self.cache
                 .project_set_entities(&project.id, &entities.items)
                 .await?;
-            state
-                .cache
+            self.cache
                 .project_set_policies(&project.id, &static_policies.items)
                 .await?;
-            state
-                .cache
+            self.cache
                 .project_set_templates(&project.id, &templates.items)
                 .await?;
-            state
-                .cache
+            self.cache
                 .project_set_template_links(&project.id, &template_links.items)
                 .await?;
         }
@@ -250,7 +237,7 @@ impl Cedrus {
         Ok(())
     }
 
-    pub async fn reload_all(&self) -> Result<(), CedrusError> {
+    pub async fn load_cache(&self) -> Result<(), CedrusError> {
         let projects = self.cache.projects_get().await?;
         for project in projects {
             self.on_project_set(&project)?;
@@ -272,12 +259,6 @@ impl Cedrus {
             self.on_project_entities(&project.id).await?;
             self.on_project_policy_set(&project.id).await?;
         }
-
-        Ok(())
-    }
-
-    pub async fn load_cache(state: &Cedrus) -> Result<(), CedrusError> {
-        state.reload_all().await?;
 
         Ok(())
     }
@@ -631,10 +612,11 @@ impl Cedrus {
 
         self.on_project_entities(&nil).await?;
 
-        let key: [u8; 16] = Uuid::now_v7().as_bytes().clone();
+        let mut bytes = [0u8; 64];
+        rand::fill(&mut bytes);
         let api_key = ApiKey::new(
             Uuid::now_v7(),
-            BASE64_STANDARD.encode(key),
+            BASE64_STANDARD.encode(bytes),
             "Default API Key".to_string(),
             project.id,
             owner.clone(),
@@ -766,9 +748,9 @@ impl Cedrus {
             return Err(CedrusError::NotFound);
         };
 
-        apikey.id = Uuid::now_v7();
-        let key: [u8; 16] = Uuid::now_v7().as_bytes().clone();
-        apikey.key = BASE64_STANDARD.encode(key);
+        let mut bytes = [0u8; 64];
+        rand::fill(&mut bytes);
+        apikey.key = BASE64_STANDARD.encode(bytes);
         apikey.project_id = project_id;
         apikey.created_at = chrono::Utc::now();
 
@@ -1280,7 +1262,7 @@ impl Cedrus {
 
         match event.msg() {
             EventType::ReloadAll => {
-                let _ = self.reload_all().await;
+                let _ = self.load_cache().await;
             }
             EventType::ProjectCreate(id) => {
                 let Ok(project_cache) = self.cache.project_get(id).await else {

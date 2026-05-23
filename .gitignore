@@ -9,3 +9,4 @@ cdk.out
 node_modules
 target
 data
+.env

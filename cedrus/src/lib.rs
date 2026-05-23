@@ -17,6 +17,7 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 pub const DEFAULT_LIMIT: usize = 1000;
+pub const MAX_TOKENS: usize = 1_000_000;
 
 #[derive(FromRequest)]
 #[from_request(via(axum::Json), rejection(AppError))]
@@ -47,7 +48,7 @@ impl AppState {
     pub fn new(cedrus: Cedrus) -> Self {
         Self {
             cedrus,
-            tokens: Cache::new(1000),
+            tokens: Cache::new(MAX_TOKENS),
         }
     }
 }

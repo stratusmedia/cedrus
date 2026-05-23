@@ -6,7 +6,7 @@ use cedrus::{
     routes::{auth, projects},
 };
 use cedrus_core::{
-    Event, Selector,
+    CedrusError, Event, Selector,
     cache::cache_factory,
     core::{CedrusConfig, cedrus::Cedrus},
     db::database_factory,
@@ -26,6 +26,8 @@ use utoipa::{
     schema,
 };
 use utoipa_swagger_ui::SwaggerUi;
+
+const CEDRUS_ADMIN_API_KEY_ENV: &str = "CEDRUS_ADMIN_API_KEY";
 
 /// Initializes the OpenTelemetry tracer provider with OTLP gRPC export.
 /// The OTLP endpoint defaults to `http://localhost:4317` and can be overridden
@@ -237,8 +239,56 @@ fn subscribe_closure<'a>(state: &'a Cedrus) -> SubscribeFn<'a> {
     Box::new(closure)
 }
 
+async fn cedrus_init(config: &CedrusConfig) -> Result<Cedrus, CedrusError> {
+    let admin_api_key = match std::env::var(CEDRUS_ADMIN_API_KEY_ENV) {
+        Ok(key) => key,
+        Err(_) => panic!("Environment variable {} not set", CEDRUS_ADMIN_API_KEY_ENV),
+    };
+
+    let db = match database_factory(&config.db).await {
+        Ok(db) => db,
+        Err(e) => panic!("Failed to create database connection: {}", e),
+    };
+    let cache = match cache_factory(&config.cache).await {
+        Ok(cache) => cache,
+        Err(e) => panic!("Failed to create cache connection: {}", e),
+    };
+    let pubsub = match pubsub_factory(&config.pubsub).await {
+        Ok(pubsub) => pubsub,
+        Err(e) => panic!("Failed to create pubsub connection: {}", e),
+    };
+
+    let mut cedrus = Cedrus::new(
+        db,
+        cache,
+        pubsub,
+        config.server.exclude_policy_annotation.clone(),
+    )
+    .await;
+
+    match cedrus.init_admin_project(config, admin_api_key).await {
+        Ok(_) => tracing::info!("Admin project initialized successfully"),
+        Err(e) => panic!("Failed to initialize admin project: {:?}", e),
+    };
+
+    match cedrus.init_cache().await {
+        Ok(_) => tracing::info!("Cache initialized successfully"),
+        Err(e) => panic!("Failed to initialize cache: {:?}", e),
+    };
+
+    match cedrus.load_cache().await {
+        Ok(_) => tracing::info!("Cache loaded successfully"),
+        Err(e) => panic!("Failed to load cache: {:?}", e),
+    };
+
+    Ok(cedrus)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load environment variables from .env file if present
+    dotenv::dotenv().ok();
+
     // Set up W3C Trace Context propagation
     opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
 
@@ -319,35 +369,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         panic!("Either the config file or the config url argument must be provided");
     };
 
-    let db = match database_factory(&config.db).await {
-        Ok(db) => db,
-        Err(e) => panic!("Failed to create database: {}", e),
-    };
-    let cache = match cache_factory(&config.cache).await {
-        Ok(cache) => cache,
-        Err(e) => panic!("Failed to create cache: {}", e),
-    };
-    let pubsub = match pubsub_factory(&config.pubsub).await {
-        Ok(pubsub) => pubsub,
-        Err(e) => panic!("Failed to create pubsub: {}", e),
-    };
+    let cedrus = cedrus_init(&config).await?;
 
-    let cedrus = Cedrus::new(db, cache, pubsub, config.server.exclude_policy_annotation.clone()).await;
     let state = AppState::new(cedrus);
     let shared_state = Arc::new(state);
-
-    match Cedrus::init_project(&shared_state.cedrus, &config).await {
-        Ok(_) => tracing::info!("Project initialized successfully"),
-        Err(e) => panic!("Failed to initialize project: {:?}", e),
-    };
-    match Cedrus::init_cache(&shared_state.cedrus).await {
-        Ok(_) => tracing::info!("Cache initialized successfully"),
-        Err(e) => panic!("Failed to initialize cache: {:?}", e),
-    };
-    match Cedrus::load_cache(&shared_state.cedrus).await {
-        Ok(_) => tracing::info!("Cache loaded successfully"),
-        Err(e) => panic!("Failed to load cache: {:?}", e),
-    };
 
     let shared = shared_state.clone();
     tokio::spawn(async move {

@@ -69,6 +69,7 @@ pub async fn authorize(
             Ok(auth_data) => {
                 let now = chrono::Utc::now().timestamp() as u64;
                 if auth_data.expires_at < now {
+                    state.tokens.remove(&token);
                     return Err(AuthError::Unauthorized);
                 }
 
