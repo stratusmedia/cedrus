@@ -193,7 +193,7 @@ impl Cedrus {
 
         let query = Query::new();
         for project in projects.items {
-            self.cache.project_clear(&project.id).await?;
+            self.cache.project_del(&project.id).await?;
 
             let apikeys = self.db.project_apikeys_load(&project.id, &query).await?;
             let entities = self.db.project_entities_load(&project.id, &query).await?;
@@ -334,9 +334,11 @@ impl Cedrus {
         Ok(())
     }
 
+    // Genarate Cedar Entities from cache
     async fn on_project_entities(&self, project_id: &Uuid) -> Result<(), CedrusError> {
         let mut cache_entities = self.cache.project_get_entities(project_id, &[]).await?;
 
+        // Add enum entities if has schema
         let cache_schema: Option<Schema> = self.cache.project_get_schema(project_id).await?;
         if let Some(schema) = cache_schema.clone() {
             for ns_name in schema.0.keys() {
@@ -705,17 +707,27 @@ impl Cedrus {
         let query = Query::new();
         let api_keys = self.db.project_apikeys_load(&project_id, &query).await?;
 
-        self.db.project_remove(&project_id).await?;
-        self.cache.project_del(&project_id).await?;
-
         let api_key_ids = api_keys
             .items
             .iter()
             .map(|x| x.key.clone())
             .collect::<Vec<String>>();
+
+        self.db.project_remove(&project_id).await?;
+        self.cache.project_del(&project_id).await?;
+
         self.on_project_del(&project_id, &api_key_ids)?;
 
-        self.on_project_entities(&Uuid::nil()).await?;
+        let nil = Uuid::nil();
+        let entity_uid = project.entity().uid().clone();
+        self.db
+            .project_entities_remove(&nil, &vec![entity_uid.clone()])
+            .await?;
+        self.cache
+            .project_del_entities(&nil, &[entity_uid.clone()])
+            .await?;
+
+        self.on_project_entities(&nil).await?;
 
         self.publish(Event::project_remove(
             self.id,

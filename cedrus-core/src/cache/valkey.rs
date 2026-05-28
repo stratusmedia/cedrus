@@ -12,59 +12,84 @@ use uuid::Uuid;
 
 use crate::core::{
     self, IdentitySource,
-    project::{ApiKey, PROJECT_ENTITY_TYPE, Project},
+    project::{ApiKey, Project},
 };
 
 use super::{Cache, CacheError};
 
-enum ConnectionType {
+pub enum CacheConnectionType {
     Multiplexed(MultiplexedConnection),
     Cluster(ClusterConnection),
 }
 
-impl ConnectionType {
-    async fn get(&self, key: &str) -> Result<Option<String>, RedisError> {
+impl CacheConnectionType {
+    pub async fn new(conf: &core::ValKeyCacheConfig) -> Result<Self, CacheError> {
+        let timeout = Duration::from_secs(5);
+        let conn = if conf.cluster {
+            let client = redis::cluster::ClusterClient::new(conf.urls.clone())
+                .map_err(|_e| CacheError::Connection)?;
+            let config = redis::cluster::ClusterConfig::new().set_connection_timeout(timeout);
+            let conn = client
+                .get_async_connection_with_config(config)
+                .await
+                .map_err(|_e| CacheError::Connection)?;
+            CacheConnectionType::Cluster(conn)
+        } else {
+            let url = conf.urls.first().ok_or(CacheError::Connection)?;
+            let client = redis::Client::open(url.clone()).map_err(|_e| CacheError::Connection)?;
+            let config = redis::AsyncConnectionConfig::new().set_connection_timeout(Some(timeout));
+            let conn = client
+                .get_multiplexed_async_connection_with_config(&config)
+                .await
+                .map_err(|_e| CacheError::Connection)?;
+            CacheConnectionType::Multiplexed(conn)
+        };
+
+        Ok(conn)
+    }
+
+    pub async fn get(&self, key: &str) -> Result<Option<String>, RedisError> {
         match self {
-            ConnectionType::Multiplexed(conn) => {
+            CacheConnectionType::Multiplexed(conn) => {
                 let mut conn = conn.clone();
                 Ok(conn.get::<_, Option<String>>(key).await?)
             }
-            ConnectionType::Cluster(conn) => {
+            CacheConnectionType::Cluster(conn) => {
                 let mut conn = conn.clone();
                 Ok(conn.get::<_, Option<String>>(key).await?)
             }
         }
     }
 
-    async fn set(&self, key: &str, value: &str) -> Result<(), RedisError> {
+    pub async fn set(&self, key: &str, value: &str) -> Result<(), RedisError> {
         match self {
-            ConnectionType::Multiplexed(conn) => {
+            CacheConnectionType::Multiplexed(conn) => {
                 let mut conn = conn.clone();
                 Ok(conn.set(key, value).await?)
             }
-            ConnectionType::Cluster(conn) => {
+            CacheConnectionType::Cluster(conn) => {
                 let mut conn = conn.clone();
                 Ok(conn.set(key, value).await?)
             }
         }
     }
 
-    async fn del(&self, keys: &Vec<String>) -> Result<(), RedisError> {
+    pub async fn del(&self, keys: &Vec<String>) -> Result<(), RedisError> {
         match self {
-            ConnectionType::Multiplexed(conn) => {
+            CacheConnectionType::Multiplexed(conn) => {
                 let mut conn = conn.clone();
                 Ok(conn.del(keys).await?)
             }
-            ConnectionType::Cluster(conn) => {
+            CacheConnectionType::Cluster(conn) => {
                 let mut conn = conn.clone();
                 Ok(conn.del(keys).await?)
             }
         }
     }
 
-    async fn scan_match(&self, pattern: &str) -> Result<Vec<String>, RedisError> {
+    pub async fn scan_match(&self, pattern: &str) -> Result<Vec<String>, RedisError> {
         match self {
-            ConnectionType::Multiplexed(conn) => {
+            CacheConnectionType::Multiplexed(conn) => {
                 let mut keys = Vec::new();
                 let mut conn = conn.clone();
                 let mut iter = conn.scan_match::<_, Option<String>>(pattern).await?;
@@ -75,7 +100,7 @@ impl ConnectionType {
                 }
                 Ok(keys)
             }
-            ConnectionType::Cluster(conn) => {
+            CacheConnectionType::Cluster(conn) => {
                 let mut keys = Vec::new();
                 let mut conn = conn.clone();
                 let mut iter = conn.scan_match::<_, Option<String>>(pattern).await?;
@@ -89,112 +114,105 @@ impl ConnectionType {
         }
     }
 
-    async fn mget(&self, keys: &Vec<String>) -> Result<Vec<Option<String>>, RedisError> {
+    pub async fn mget(&self, keys: &Vec<String>) -> Result<Vec<Option<String>>, RedisError> {
         match self {
-            ConnectionType::Multiplexed(conn) => {
+            CacheConnectionType::Multiplexed(conn) => {
                 let mut conn = conn.clone();
                 Ok(conn.mget::<_, Vec<Option<String>>>(keys).await?)
             }
-            ConnectionType::Cluster(conn) => {
+            CacheConnectionType::Cluster(conn) => {
                 let mut conn = conn.clone();
                 Ok(conn.mget::<_, Vec<Option<String>>>(keys).await?)
             }
         }
     }
 
-    async fn mset(&self, sets: &Vec<(String, String)>) -> Result<(), RedisError> {
+    pub async fn mset(&self, sets: &Vec<(String, String)>) -> Result<(), RedisError> {
         match self {
-            ConnectionType::Multiplexed(conn) => {
+            CacheConnectionType::Multiplexed(conn) => {
                 let mut conn = conn.clone();
                 Ok(conn.mset(sets).await?)
             }
-            ConnectionType::Cluster(conn) => {
+            CacheConnectionType::Cluster(conn) => {
                 let mut conn = conn.clone();
                 Ok(conn.mset(sets).await?)
+            }
+        }
+    }
+
+    pub async fn incr(&self, key: &str, num: usize) -> Result<(), RedisError> {
+        match self {
+            CacheConnectionType::Multiplexed(conn) => {
+                let mut conn = conn.clone();
+                Ok(conn.incr(key, num).await?)
+            }
+            CacheConnectionType::Cluster(conn) => {
+                let mut conn = conn.clone();
+                Ok(conn.incr(key, num).await?)
             }
         }
     }
 }
 
 pub struct ValKeyCache {
-    conn: ConnectionType,
+    conn: CacheConnectionType,
 }
 
 impl ValKeyCache {
     pub async fn new(conf: &core::ValKeyCacheConfig) -> Result<Self, CacheError> {
-        let conn = if conf.cluster {
-            let client = redis::cluster::ClusterClient::new(conf.urls.clone())
-                .map_err(|_e| CacheError::Connection)?;
-            let config = redis::cluster::ClusterConfig::new()
-                .set_connection_timeout(Duration::from_secs(300));
-            let conn = client
-                .get_async_connection_with_config(config)
-                .await
-                .map_err(|_e| CacheError::Connection)?;
-            ConnectionType::Cluster(conn)
-        } else {
-            let url = conf.urls.first().ok_or(CacheError::Connection)?;
-            let client = redis::Client::open(url.clone()).map_err(|_e| CacheError::Connection)?;
-            let config = redis::AsyncConnectionConfig::new()
-                .set_connection_timeout(Some(Duration::from_secs(300)));
-            let conn = client
-                .get_multiplexed_async_connection_with_config(&config)
-                .await
-                .map_err(|_e| CacheError::Connection)?;
-            ConnectionType::Multiplexed(conn)
-        };
+        let conn = CacheConnectionType::new(conf).await?;
 
         Ok(Self { conn })
     }
 
     fn apikeys_pattern(&self, project_id: &Uuid) -> String {
-        format!("cedrus:p:{}:ak:*", project_id)
+        format!("c:pak:{}:*", project_id)
     }
     fn apikeys_key(&self, project_id: &Uuid, apikey_id: &Uuid) -> String {
-        format!("cedrus:p:{}:ak:{}", project_id, apikey_id)
+        format!("c:pak:{}:{}", project_id, apikey_id)
     }
 
     fn project_identity_source_key(&self, project_id: &Uuid) -> String {
-        format!("cedrus:p:{}:is", project_id)
+        format!("c:pis:{}", project_id)
     }
 
     fn project_schema_key(&self, project_id: &Uuid) -> String {
-        format!("cedrus:p:{}:s", project_id)
+        format!("c:ps:{}", project_id)
     }
 
     fn entities_pattern(&self, project_id: &Uuid) -> String {
-        format!("cedrus:p:{}:e:*", project_id)
+        format!("c:pe:{}:*", project_id)
     }
     fn entities_key(&self, project_id: &Uuid, entity_uid: &EntityUid) -> String {
-        format!("cedrus:p:{}:e:{}", project_id, entity_uid)
+        format!("c:pe:{}:{}", project_id, entity_uid)
     }
 
     fn policies_pattern(&self, project_id: &Uuid) -> String {
-        format!("cedrus:p:{}:p:*", project_id)
+        format!("c:pp:{}:*", project_id)
     }
     fn policies_key(&self, project_id: &Uuid, policy_id: &PolicyId) -> String {
-        format!("cedrus:p:{}:p:{}", project_id, policy_id)
+        format!("c:pp:{}:{}", project_id, policy_id)
     }
 
     fn templates_pattern(&self, project_id: &Uuid) -> String {
-        format!("cedrus:p:{}:t:*", project_id)
+        format!("c:pt:{}:*", project_id)
     }
     fn templates_key(&self, project_id: &Uuid, policy_id: &PolicyId) -> String {
-        format!("cedrus:p:{}:t:{}", project_id, policy_id)
+        format!("c:pt:{}:{}", project_id, policy_id)
     }
 
     fn template_links_pattern(&self, project_id: &Uuid) -> String {
-        format!("cedrus:p:{}:tl:*", project_id)
+        format!("c:ptl:{}:*", project_id)
     }
     fn template_links_key(&self, project_id: &Uuid, policy_id: &PolicyId) -> String {
-        format!("cedrus:p:{}:tl:{}", project_id, policy_id)
+        format!("c:ptl:{}:{}", project_id, policy_id)
     }
 
     fn project_pattern(&self) -> String {
-        "cedrus:prj:*".to_string()
+        "c:p:*".to_string()
     }
     fn project_key(&self, project_id: &Uuid) -> String {
-        format!("cedrus:prj:{}", project_id)
+        format!("c:p:{}", project_id)
     }
 
     fn entity_to_val(&self, entity: &Entity) -> String {
@@ -220,16 +238,6 @@ impl ValKeyCache {
 
 #[async_trait::async_trait]
 impl Cache for ValKeyCache {
-    async fn project_clear(&self, project_id: &Uuid) -> Result<(), CacheError> {
-        let pattern = format!("cedrus:p:{}:*", project_id);
-        let mut keys = self.keys_from_pattern(&pattern).await?;
-
-        keys.push(self.project_key(project_id));
-
-        let _: () = self.conn.del(&keys).await?;
-        Ok(())
-    }
-
     async fn projects_get(&self) -> Result<Vec<Project>, CacheError> {
         let pattern = self.project_pattern();
         let keys = self.keys_from_pattern(&pattern).await?;
@@ -272,18 +280,28 @@ impl Cache for ValKeyCache {
     }
 
     async fn project_del(&self, project_id: &Uuid) -> Result<(), CacheError> {
-        let pattern = format!("cedrus:p:{}:*", project_id);
-        let mut keys = self.keys_from_pattern(&pattern).await?;
+        let mut keys = Vec::new();
 
         keys.push(self.project_key(project_id));
 
-        let uid = EntityUid::new(PROJECT_ENTITY_TYPE.to_string(), project_id.to_string());
-        let key = format!("cedrus:p:{}:e:{}", Uuid::nil(), uid);
-        keys.push(key);
+        let pattern_prefix = self.apikeys_pattern(project_id);
+        keys.extend(self.keys_from_pattern(&pattern_prefix).await?);
 
-        let pattern = format!("cedrus:p:{}:tl:{}_*", Uuid::nil(), project_id);
-        let mut tls = self.keys_from_pattern(&pattern).await?;
-        keys.append(&mut tls);
+        keys.push(self.project_identity_source_key(project_id));
+
+        keys.push(self.project_schema_key(project_id));
+
+        let pattern_prefix = self.entities_pattern(project_id);
+        keys.extend(self.keys_from_pattern(&pattern_prefix).await?);
+
+        let pattern_prefix = self.policies_pattern(project_id);
+        keys.extend(self.keys_from_pattern(&pattern_prefix).await?);
+
+        let pattern_prefix = self.templates_pattern(project_id);
+        keys.extend(self.keys_from_pattern(&pattern_prefix).await?);
+
+        let pattern_prefix = self.template_links_pattern(project_id);
+        keys.extend(self.keys_from_pattern(&pattern_prefix).await?);
 
         let _: () = self.conn.del(&keys).await?;
 

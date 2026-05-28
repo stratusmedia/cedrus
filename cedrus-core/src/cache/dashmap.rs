@@ -47,17 +47,6 @@ impl DashMapCache {
 
 #[async_trait::async_trait]
 impl Cache for DashMapCache {
-    async fn project_clear(&self, project_id: &Uuid) -> Result<(), CacheError> {
-        self.projects.remove(project_id);
-        self.identity_sources.remove(project_id);
-        self.schemas.remove(project_id);
-        self.entities.retain(|(pid, _), _| pid != project_id);
-        self.policies.retain(|(pid, _), _| pid != project_id);
-        self.templates.retain(|(pid, _), _| pid != project_id);
-        self.template_links.retain(|(pid, _), _| pid != project_id);
-        Ok(())
-    }
-
     async fn projects_get(&self) -> Result<Vec<Project>, CacheError> {
         Ok(self.projects.iter().map(|r| r.value().clone()).collect())
     }
@@ -73,6 +62,13 @@ impl Cache for DashMapCache {
 
     async fn project_del(&self, project_id: &Uuid) -> Result<(), CacheError> {
         self.projects.remove(project_id);
+        self.apikeys.retain(|(pid, _), _| pid != project_id);
+        self.identity_sources.remove(project_id);
+        self.schemas.remove(project_id);
+        self.entities.retain(|(pid, _), _| pid != project_id);
+        self.policies.retain(|(pid, _), _| pid != project_id);
+        self.templates.retain(|(pid, _), _| pid != project_id);
+        self.template_links.retain(|(pid, _), _| pid != project_id);
         Ok(())
     }
 

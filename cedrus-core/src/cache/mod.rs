@@ -45,8 +45,6 @@ impl From<RedisError> for CacheError {
 
 #[async_trait::async_trait]
 pub trait Cache: Send + Sync {
-    async fn project_clear(&self, project_id: &Uuid) -> Result<(), CacheError>;
-
     async fn projects_get(&self) -> Result<Vec<Project>, CacheError>;
     async fn project_get(&self, project_id: &Uuid) -> Result<Option<Project>, CacheError>;
     async fn project_set(&self, project: &Project) -> Result<(), CacheError>;

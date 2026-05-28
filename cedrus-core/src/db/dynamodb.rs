@@ -817,66 +817,7 @@ impl Database for DynamoDb {
             }
         }
 
-        let pk = format!("{}#{}", PROJECT_TYPE, Uuid::nil());
-        let sk = format!("{}#{}#{}", pk, PROJECT_TEMPLATE_LINK_TYPE, id);
-        let mut stream = self
-            .client
-            .query()
-            .table_name(&self.table_name)
-            .key_condition_expression("#PK = :PK AND begins_with(#SK, :SK)")
-            .expression_attribute_names("#PK", "PK")
-            .expression_attribute_names("#SK", "SK")
-            .expression_attribute_values(
-                ":PK",
-                aws_sdk_dynamodb::types::AttributeValue::S(pk.clone()),
-            )
-            .expression_attribute_values(":SK", aws_sdk_dynamodb::types::AttributeValue::S(sk))
-            .into_paginator()
-            .send();
-
-        while let Some(page) = stream.next().await {
-            let page = page.map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?;
-            for item in &page.items.unwrap_or_default() {
-                let pk = item.get("PK").ok_or_else(|| {
-                    tracing::error!("Missing PK in item: {:?}", item);
-                    DatabaseError::MissingAttribute("PK".to_string())
-                })?;
-                let sk = item.get("SK").ok_or_else(|| {
-                    tracing::error!("Missing SK in item: {:?}", item);
-                    DatabaseError::MissingAttribute("SK".to_string())
-                })?;
-
-                let request = WriteRequest::builder()
-                    .delete_request(
-                        DeleteRequest::builder()
-                            .key("PK", pk.clone())
-                            .key("SK", sk.clone())
-                            .build()
-                            .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?,
-                    )
-                    .build();
-                request_items.push(request);
-            }
-        }
-
         self.batch_write_item(request_items).await?;
-
-        let uid = EntityUid::new(
-            crate::core::project::PROJECT_ENTITY_TYPE.to_string(),
-            id.to_string(),
-        );
-
-        let pk = format!("{}#{}", PROJECT_TYPE, Uuid::nil());
-        let sk = format!("{}#{}#{}", pk, PROJECT_ENTITY_TYPE, uid.to_string());
-
-        self.client
-            .delete_item()
-            .table_name(&self.table_name)
-            .key(PK, AttributeValue::S(pk))
-            .key(SK, AttributeValue::S(sk))
-            .send()
-            .await
-            .map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
 
         Ok(())
     }
