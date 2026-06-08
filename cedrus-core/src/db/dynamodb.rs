@@ -474,30 +474,27 @@ impl DynamoDb {
         &self,
         item: &mut HashMap<String, AttributeValue>,
     ) -> Result<Project, DatabaseError> {
-        let Some(created_at_att) = item.get(CREATED_AT_ATT) else {
-            return Err(DatabaseError::MissingAttribute(CREATED_AT_ATT.to_string()));
-        };
-        let Some(updated_at_att) = item.get(UPDATED_AT_ATT) else {
-            return Err(DatabaseError::MissingAttribute(UPDATED_AT_ATT.to_string()));
-        };
-        let Ok(created_at_val) = created_at_att.as_n() else {
-            return Err(DatabaseError::InvalidAttribute(CREATED_AT_ATT.to_string()));
-        };
-        let Ok(updated_at_val) = updated_at_att.as_n() else {
-            return Err(DatabaseError::InvalidAttribute(UPDATED_AT_ATT.to_string()));
-        };
-        let Ok(created_at_int) = created_at_val.parse::<i64>() else {
-            return Err(DatabaseError::InvalidAttribute(CREATED_AT_ATT.to_string()));
-        };
-        let Ok(updated_at_int) = updated_at_val.parse::<i64>() else {
-            return Err(DatabaseError::InvalidAttribute(UPDATED_AT_ATT.to_string()));
-        };
-        let Some(created_at) = chrono::DateTime::from_timestamp_millis(created_at_int) else {
-            return Err(DatabaseError::InvalidAttribute(CREATED_AT_ATT.to_string()));
-        };
-        let Some(updated_at) = chrono::DateTime::from_timestamp_millis(updated_at_int) else {
-            return Err(DatabaseError::InvalidAttribute(UPDATED_AT_ATT.to_string()));
-        };
+        let created_at_millis_str = item
+            .get(CREATED_AT_ATT)
+            .ok_or_else(|| DatabaseError::MissingAttribute(CREATED_AT_ATT.to_string()))?
+            .as_n()
+            .map_err(|_| DatabaseError::InvalidAttribute(CREATED_AT_ATT.to_string()))?;
+        let created_at_millis: i64 = created_at_millis_str
+            .parse()
+            .map_err(|_| DatabaseError::InvalidAttribute(CREATED_AT_ATT.to_string()))?;
+        let created_at = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(created_at_millis)
+            .ok_or_else(|| DatabaseError::InvalidAttribute(CREATED_AT_ATT.to_string()))?;
+
+        let updated_at_millis_str = item
+            .get(UPDATED_AT_ATT)
+            .ok_or_else(|| DatabaseError::MissingAttribute(UPDATED_AT_ATT.to_string()))?
+            .as_n()
+            .map_err(|_| DatabaseError::InvalidAttribute(UPDATED_AT_ATT.to_string()))?;
+        let updated_at_millis: i64 = updated_at_millis_str
+            .parse()
+            .map_err(|_| DatabaseError::InvalidAttribute(UPDATED_AT_ATT.to_string()))?;
+        let updated_at = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(updated_at_millis)
+            .ok_or_else(|| DatabaseError::InvalidAttribute(UPDATED_AT_ATT.to_string()))?;
 
         item.insert(
             CREATED_AT_ATT.to_string(),
@@ -960,36 +957,33 @@ impl Database for DynamoDb {
     async fn project_remove(&self, id: &Uuid) -> Result<(), DatabaseError> {
         let pk = format!("{}#{}", PROJECT_TYPE, id);
 
-        let mut request_items = Vec::new();
-
         let mut stream = self
             .client
             .query()
             .table_name(&self.table_name)
             .key_condition_expression("#PK = :PK")
-            .expression_attribute_names("#PK", "PK")
+            .expression_attribute_names("#PK", PK)
             .expression_attribute_values(":PK", AttributeValue::S(pk))
             .into_paginator()
             .send();
 
+        let mut request_items = Vec::new();
         while let Some(page) = stream.next().await {
             let page =
                 page.map_err(|e| DatabaseError::AwsSdkError(format!("{:?}", e.raw_response())))?;
             for item in &page.items.unwrap_or_default() {
-                let pk = item.get("PK").ok_or_else(|| {
-                    tracing::error!("Missing PK in item: {:?}", item);
-                    DatabaseError::MissingAttribute("PK".to_string())
-                })?;
-                let sk = item.get("SK").ok_or_else(|| {
-                    tracing::error!("Missing SK in item: {:?}", item);
-                    DatabaseError::MissingAttribute("SK".to_string())
-                })?;
+                let pk = item
+                    .get(PK)
+                    .ok_or_else(|| DatabaseError::MissingAttribute(PK.to_string()))?;
+                let sk = item
+                    .get(SK)
+                    .ok_or_else(|| DatabaseError::MissingAttribute(SK.to_string()))?;
 
                 let request = WriteRequest::builder()
                     .delete_request(
                         DeleteRequest::builder()
-                            .key("PK", pk.clone())
-                            .key("SK", sk.clone())
+                            .key(PK, pk.clone())
+                            .key(SK, sk.clone())
                             .build()
                             .map_err(|e| DatabaseError::AwsSdkError(e.to_string()))?,
                     )
