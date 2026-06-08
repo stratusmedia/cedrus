@@ -860,8 +860,8 @@ impl DynamoDb {
             .set_filter_expression(filter.filter())
             .set_expression_attribute_names(filter.names())
             .set_expression_attribute_values(filter.values())
-            .set_limit(limit)
             .set_exclusive_start_key(filter.start_key.clone())
+            .set_limit(limit)
             .send()
             .await
             .unwrap();
@@ -1715,17 +1715,24 @@ mod tests {
         for i in 0..3000 {
             let project_id = Uuid::now_v7();
             let project = Project::new(project_id, format!("mock-project-{}", i), owner.clone());
-            let item = db.project_to_item(&project).expect("Failed to serialize project");
+            let item = db
+                .project_to_item(&project)
+                .expect("Failed to serialize project");
             items.push(item);
         }
 
-        db.put_items(items).await.expect("Failed to batch save mock projects");
+        db.put_items(items)
+            .await
+            .expect("Failed to batch save mock projects");
 
         // First page query with limit 2000
         let mut query = Query::default();
         query.limit = Some(2000);
 
-        let first_page = db.projects_load(&query).await.expect("Failed to load first page of projects");
+        let first_page = db
+            .projects_load(&query)
+            .await
+            .expect("Failed to load first page of projects");
         assert_eq!(first_page.items.len(), 2000);
         assert!(first_page.last_key.is_some());
 
@@ -1735,7 +1742,10 @@ mod tests {
         query_two.limit = Some(2000);
         query_two.start_key = Some(last_key);
 
-        let second_page = db.projects_load(&query_two).await.expect("Failed to load second page of projects");
+        let second_page = db
+            .projects_load(&query_two)
+            .await
+            .expect("Failed to load second page of projects");
         assert_eq!(second_page.items.len(), 1000);
 
         teardown_test_db(&db).await;
