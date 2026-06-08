@@ -482,7 +482,7 @@ pub struct QueryParams {
     pub start_key: Option<String>,
     #[param(nullable)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub limit: Option<u32>,
+    pub limit: Option<usize>,
     /*
     #[param(nullable)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -502,7 +502,7 @@ impl From<Query> for QueryParams {
             fields: query.fields.len().ne(&0).then(|| query.fields),
             */
             start_key: query.start_key,
-            limit: query.limit.ge(&0).then_some(query.limit),
+            limit: query.limit,
             /*
             skip: query.skip.ge(&0).then(|| query.skip),
             index: query.index,
@@ -518,8 +518,8 @@ impl From<QueryParams> for Query {
             sort: Vec::new(),   // self.sort.unwrap_or_default(),
             fields: Vec::new(), // self.fields.unwrap_or_default(),
             start_key: val.start_key,
-            limit: val.limit.unwrap_or(0),
-            skip: 0,     // self.skip.unwrap_or(0),
+            limit: val.limit,
+            skip: None,  // self.skip.unwrap_or(0),
             index: None, //self.index,
         }
     }

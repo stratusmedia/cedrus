@@ -246,8 +246,10 @@ pub struct Query {
     pub fields: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_key: Option<String>,
-    pub limit: u32,
-    pub skip: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skip: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index: Option<String>,
 }

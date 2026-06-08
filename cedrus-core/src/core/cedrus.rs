@@ -253,7 +253,7 @@ impl Cedrus {
 
             let cache_schema = self.cache.project_get_schema(&project.id).await?;
             if let Some(schema) = &cache_schema {
-                self.on_project_schema_set(&project.id, &schema)?;
+                self.on_project_schema_set(&project.id, schema)?;
             }
 
             self.on_project_entities(&project.id).await?;
@@ -609,7 +609,7 @@ impl Cedrus {
             .project_entities_save(&nil, &Vec::from([entity.clone()]))
             .await?;
         self.cache
-            .project_set_entities(&nil, &[entity.clone()])
+            .project_set_entities(&nil, std::slice::from_ref(&entity))
             .await?;
 
         self.on_project_entities(&nil).await?;
@@ -687,7 +687,7 @@ impl Cedrus {
                 .project_entities_save(&nil, &Vec::from([entity.clone()]))
                 .await?;
             self.cache
-                .project_set_entities(&nil, &[entity.clone()])
+                .project_set_entities(&nil, std::slice::from_ref(&entity))
                 .await?;
 
             self.on_project_entities(&nil).await?;
@@ -724,7 +724,7 @@ impl Cedrus {
             .project_entities_remove(&nil, &vec![entity_uid.clone()])
             .await?;
         self.cache
-            .project_del_entities(&nil, &[entity_uid.clone()])
+            .project_del_entities(&nil, std::slice::from_ref(&entity_uid))
             .await?;
 
         self.on_project_entities(&nil).await?;
@@ -847,13 +847,13 @@ impl Cedrus {
         };
 
         self.db
-            .project_apikeys_remove(&project_id, &vec![id.clone()])
+            .project_apikeys_remove(&project_id, &vec![id])
             .await?;
         self.cache
-            .project_del_apikeys(&project_id, &vec![id.clone()])
+            .project_del_apikeys(&project_id, &vec![id])
             .await?;
 
-        self.on_project_apikeys_del(&[apikey.key.clone()])?;
+        self.on_project_apikeys_del(std::slice::from_ref(&apikey.key))?;
 
         self.publish(Event::project_remove_apikeys(
             self.id,
@@ -1283,7 +1283,7 @@ impl Cedrus {
 
                 if let Some(project) = project_cache {
                     let _ = self.on_project_set(&project);
-                    let _ = self.on_project_entities(&Uuid::nil());
+                    let _ = self.on_project_entities(&Uuid::nil()).await;
 
                     let Ok(cache_api_keys) = self.cache.project_get_apikeys(id).await else {
                         return;
@@ -1298,15 +1298,15 @@ impl Cedrus {
 
                 if let Some(project) = project_cache {
                     let _ = self.on_project_set(&project);
-                    let _ = self.on_project_entities(&Uuid::nil());
+                    let _ = self.on_project_entities(&Uuid::nil()).await;
                 }
             }
             EventType::ProjectRemove(id, api_keys) => {
                 let _ = self.on_project_del(id, &Vec::from_iter(api_keys.clone()));
-                let _ = self.on_project_entities(&Uuid::nil());
+                let _ = self.on_project_entities(&Uuid::nil()).await;
             }
             EventType::ProjectAddApikeys(project_id, api_key_ids) => {
-                let Ok(cache_api_keys) = self.cache.project_get_apikeys(&project_id).await else {
+                let Ok(cache_api_keys) = self.cache.project_get_apikeys(project_id).await else {
                     return;
                 };
 
@@ -1344,13 +1344,13 @@ impl Cedrus {
                 }
             }
             EventType::ProjectRemoveSchema(id) => {
-                let _ = self.on_project_schema_del(&id);
+                let _ = self.on_project_schema_del(id);
             }
             EventType::ProjectAddEntities(id, _entity_uids) => {
-                let _ = self.on_project_entities(id);
+                let _ = self.on_project_entities(id).await;
             }
             EventType::ProjectRemoveEntities(id, _entity_uids) => {
-                let _ = self.on_project_entities(id);
+                let _ = self.on_project_entities(id).await;
             }
             EventType::ProjectAddPolicies(id, _policy_ids) => {
                 let _ = self.on_project_policy_set(id).await;
