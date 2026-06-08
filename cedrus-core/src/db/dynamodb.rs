@@ -314,7 +314,7 @@ impl QueryFilter {
 
 pub struct DynamoDBPage {
     pub items: Vec<HashMap<String, AttributeValue>>,
-    pub next_key: Option<String>,
+    pub last_key: Option<String>,
 }
 
 pub struct DynamoDb {
@@ -861,6 +861,7 @@ impl DynamoDb {
             .set_expression_attribute_names(filter.names())
             .set_expression_attribute_values(filter.values())
             .set_limit(limit)
+            .set_exclusive_start_key(filter.start_key.clone())
             .send()
             .await
             .unwrap();
@@ -916,7 +917,7 @@ impl DynamoDb {
 
         Ok(DynamoDBPage {
             items,
-            next_key: prev_key,
+            last_key: prev_key,
         })
     }
 }
@@ -937,7 +938,7 @@ impl Database for DynamoDb {
             datas.push(Self::project_from_item(&self, &mut item)?);
         }
 
-        Ok(PageList::new(datas, page.next_key))
+        Ok(PageList::new(datas, page.last_key))
     }
 
     async fn project_load(&self, id: &Uuid) -> Result<Option<Project>, DatabaseError> {
@@ -1018,7 +1019,7 @@ impl Database for DynamoDb {
             datas.push(Self::project_apikey_from_item(&self, &mut item)?);
         }
 
-        Ok(PageList::new(datas, page.next_key))
+        Ok(PageList::new(datas, page.last_key))
     }
 
     async fn project_apikeys_save(
@@ -1135,7 +1136,7 @@ impl Database for DynamoDb {
             datas.push(self.project_entity_from_item(&item)?);
         }
 
-        Ok(PageList::new(datas, page.next_key))
+        Ok(PageList::new(datas, page.last_key))
     }
 
     async fn project_entities_save(
@@ -1190,7 +1191,7 @@ impl Database for DynamoDb {
             datas.insert(policy_id, policy);
         }
 
-        Ok(PageHash::new(datas, page.next_key))
+        Ok(PageHash::new(datas, page.last_key))
     }
 
     async fn project_policies_save(
@@ -1245,7 +1246,7 @@ impl Database for DynamoDb {
             datas.insert(policy_id, template);
         }
 
-        Ok(PageHash::new(datas, page.next_key))
+        Ok(PageHash::new(datas, page.last_key))
     }
 
     async fn project_templates_save(
@@ -1302,7 +1303,7 @@ impl Database for DynamoDb {
             datas.push(self.project_template_link_from_item(&item)?);
         }
 
-        Ok(PageList::new(datas, page.next_key))
+        Ok(PageList::new(datas, page.last_key))
     }
 
     async fn project_template_links_save(
@@ -1341,5 +1342,402 @@ impl Database for DynamoDb {
 
 #[cfg(test)]
 mod tests {
-    // TODO: Create tests
+    use super::*;
+    use crate::Query;
+    use cedrus_cedar::{Entity, EntityUid, Policy, PolicyId, Schema, Template, TemplateLink};
+    use std::collections::{HashMap, HashSet};
+    use uuid::Uuid;
+
+    async fn setup_test_db() -> DynamoDb {
+        unsafe {
+            std::env::set_var("AWS_ACCESS_KEY_ID", "local");
+            std::env::set_var("AWS_SECRET_ACCESS_KEY", "local");
+            std::env::set_var("AWS_REGION", "us-east-1");
+        }
+
+        let table_name = format!("test_cedrus_table_{}", Uuid::now_v7().simple());
+        let conf = crate::core::DynamoDBConfig {
+            endpoint_url: Some("http://localhost:8000".to_string()),
+            region: Some("us-east-1".to_string()),
+            table_name,
+            initialize: true,
+        };
+
+        let db = DynamoDb::new(&conf)
+            .await
+            .expect("Failed to create DynamoDb client");
+        db.init().await.expect("Failed to initialize test table");
+        db
+    }
+
+    async fn teardown_test_db(db: &DynamoDb) {
+        let _ = db
+            .client
+            .delete_table()
+            .table_name(&db.table_name)
+            .send()
+            .await;
+    }
+
+    #[tokio::test]
+    async fn test_project_crud() {
+        let db = setup_test_db().await;
+
+        let project_id = Uuid::now_v7();
+        let owner = EntityUid::new("User".to_string(), "owner-id".to_string());
+        let project = Project::new(project_id, "test-project".to_string(), owner.clone());
+
+        // Test save
+        db.project_save(&project)
+            .await
+            .expect("Failed to save project");
+
+        // Test load
+        let loaded = db
+            .project_load(&project_id)
+            .await
+            .expect("Failed to load project");
+        assert!(loaded.is_some());
+        let loaded = loaded.unwrap();
+        assert_eq!(loaded.id, project.id);
+        assert_eq!(loaded.name, project.name);
+        assert_eq!(loaded.owner, project.owner);
+
+        // Test projects_load
+        let query = Query::default();
+        let projects_page = db
+            .projects_load(&query)
+            .await
+            .expect("Failed to load projects list");
+        assert!(projects_page.items.iter().any(|p| p.id == project_id));
+
+        // Test remove
+        db.project_remove(&project_id)
+            .await
+            .expect("Failed to remove project");
+        let loaded_after_remove = db
+            .project_load(&project_id)
+            .await
+            .expect("Failed to load project after remove");
+        assert!(loaded_after_remove.is_none());
+
+        teardown_test_db(&db).await;
+    }
+
+    #[tokio::test]
+    async fn test_apikey_crud() {
+        let db = setup_test_db().await;
+
+        let project_id = Uuid::now_v7();
+        let owner = EntityUid::new("User".to_string(), "owner-id".to_string());
+        let api_key_id = Uuid::now_v7();
+        let api_key = ApiKey::new(
+            api_key_id,
+            "test-key-value-string".to_string(),
+            "test-api-key".to_string(),
+            project_id,
+            owner.clone(),
+        );
+
+        let apikeys = vec![api_key.clone()];
+
+        // Test save
+        db.project_apikeys_save(&project_id, &apikeys)
+            .await
+            .expect("Failed to save api keys");
+
+        // Test load
+        let query = Query::default();
+        let loaded_page = db
+            .project_apikeys_load(&project_id, &query)
+            .await
+            .expect("Failed to load api keys");
+        assert_eq!(loaded_page.items.len(), 1);
+        let loaded_key = &loaded_page.items[0];
+        assert_eq!(loaded_key.id, api_key.id);
+        assert_eq!(loaded_key.key, api_key.key);
+        assert_eq!(loaded_key.name, api_key.name);
+
+        // Test remove
+        db.project_apikeys_remove(&project_id, &vec![api_key_id])
+            .await
+            .expect("Failed to remove api keys");
+        let loaded_after_remove = db
+            .project_apikeys_load(&project_id, &query)
+            .await
+            .expect("Failed to load after remove");
+        assert_eq!(loaded_after_remove.items.len(), 0);
+
+        teardown_test_db(&db).await;
+    }
+
+    #[tokio::test]
+    async fn test_identity_source_crud() {
+        let db = setup_test_db().await;
+
+        let project_id = Uuid::now_v7();
+        let identity_source = IdentitySource {
+            principal_entity_type: "User".to_string(),
+            configuration: crate::core::is::Configuration::CognitoUserPoolConfiguration(
+                crate::core::is::CognitoUserPoolConfiguration {
+                    user_pool_arn:
+                        "arn:aws:cognito-idp:us-east-1:123456789012:userpool/us-east-1_abcdefghi"
+                            .to_string(),
+                    client_ids: vec!["client_id_1".to_string()],
+                    group_configuration: None,
+                },
+            ),
+        };
+
+        // Test save
+        db.project_identity_source_save(&project_id, &identity_source)
+            .await
+            .expect("Failed to save identity source");
+
+        // Test load
+        let loaded = db
+            .project_identity_source_load(&project_id)
+            .await
+            .expect("Failed to load identity source");
+        assert!(loaded.is_some());
+        let loaded = loaded.unwrap();
+        assert_eq!(
+            loaded.principal_entity_type,
+            identity_source.principal_entity_type
+        );
+
+        // Test remove
+        db.project_identity_source_remove(&project_id)
+            .await
+            .expect("Failed to remove identity source");
+        let loaded_after_remove = db
+            .project_identity_source_load(&project_id)
+            .await
+            .expect("Failed to load after remove");
+        assert!(loaded_after_remove.is_none());
+
+        teardown_test_db(&db).await;
+    }
+
+    #[tokio::test]
+    async fn test_schema_crud() {
+        let db = setup_test_db().await;
+
+        let project_id = Uuid::now_v7();
+        let mut namespaces = HashMap::new();
+        namespaces.insert("".to_string(), cedrus_cedar::schema::Namespace::default());
+        let schema = Schema(namespaces);
+
+        // Test save
+        db.project_schema_save(&project_id, &schema)
+            .await
+            .expect("Failed to save schema");
+
+        // Test load
+        let loaded = db
+            .project_schema_load(&project_id)
+            .await
+            .expect("Failed to load schema");
+        assert!(loaded.is_some());
+        let loaded = loaded.unwrap();
+        assert!(loaded.0.contains_key(""));
+
+        // Test remove
+        db.project_schema_remove(&project_id)
+            .await
+            .expect("Failed to remove schema");
+        let loaded_after_remove = db
+            .project_schema_load(&project_id)
+            .await
+            .expect("Failed to load after remove");
+        assert!(loaded_after_remove.is_none());
+
+        teardown_test_db(&db).await;
+    }
+
+    #[tokio::test]
+    async fn test_entity_crud() {
+        let db = setup_test_db().await;
+
+        let project_id = Uuid::now_v7();
+        let uid = EntityUid::new("User".to_string(), "alice".to_string());
+        let entity = Entity::new_no_attrs(uid.clone(), HashSet::new());
+        let entities = vec![entity.clone()];
+
+        // Test save
+        db.project_entities_save(&project_id, &entities)
+            .await
+            .expect("Failed to save entities");
+
+        // Test load
+        let query = Query::default();
+        let loaded_page = db
+            .project_entities_load(&project_id, &query)
+            .await
+            .expect("Failed to load entities");
+        assert_eq!(loaded_page.items.len(), 1);
+        assert_eq!(loaded_page.items[0].uid(), &uid);
+
+        // Test remove
+        db.project_entities_remove(&project_id, &vec![uid.clone()])
+            .await
+            .expect("Failed to remove entities");
+        let loaded_after_remove = db
+            .project_entities_load(&project_id, &query)
+            .await
+            .expect("Failed to load after remove");
+        assert_eq!(loaded_after_remove.items.len(), 0);
+
+        teardown_test_db(&db).await;
+    }
+
+    #[tokio::test]
+    async fn test_policy_crud() {
+        let db = setup_test_db().await;
+
+        let project_id = Uuid::now_v7();
+        let policy_id = PolicyId::from("policy-1".to_string());
+        let policy = Policy::default();
+
+        let mut policies = HashMap::new();
+        policies.insert(policy_id.clone(), policy.clone());
+
+        // Test save
+        db.project_policies_save(&project_id, &policies)
+            .await
+            .expect("Failed to save policies");
+
+        // Test load
+        let query = Query::default();
+        let loaded_page = db
+            .project_policies_load(&project_id, &query)
+            .await
+            .expect("Failed to load policies");
+        assert_eq!(loaded_page.items.len(), 1);
+        assert!(loaded_page.items.contains_key(&policy_id));
+
+        // Test remove
+        db.project_policies_remove(&project_id, &vec![policy_id.clone()])
+            .await
+            .expect("Failed to remove policies");
+        let loaded_after_remove = db
+            .project_policies_load(&project_id, &query)
+            .await
+            .expect("Failed to load after remove");
+        assert_eq!(loaded_after_remove.items.len(), 0);
+
+        teardown_test_db(&db).await;
+    }
+
+    #[tokio::test]
+    async fn test_template_crud() {
+        let db = setup_test_db().await;
+
+        let project_id = Uuid::now_v7();
+        let template_id = PolicyId::from("template-1".to_string());
+        let template = Template::default();
+
+        let mut templates = HashMap::new();
+        templates.insert(template_id.clone(), template.clone());
+
+        // Test save
+        db.project_templates_save(&project_id, &templates)
+            .await
+            .expect("Failed to save templates");
+
+        // Test load
+        let query = Query::default();
+        let loaded_page = db
+            .project_templates_load(&project_id, &query)
+            .await
+            .expect("Failed to load templates");
+        assert_eq!(loaded_page.items.len(), 1);
+        assert!(loaded_page.items.contains_key(&template_id));
+
+        // Test remove
+        db.project_templates_remove(&project_id, &vec![template_id.clone()])
+            .await
+            .expect("Failed to remove templates");
+        let loaded_after_remove = db
+            .project_templates_load(&project_id, &query)
+            .await
+            .expect("Failed to load after remove");
+        assert_eq!(loaded_after_remove.items.len(), 0);
+
+        teardown_test_db(&db).await;
+    }
+
+    #[tokio::test]
+    async fn test_template_link_crud() {
+        let db = setup_test_db().await;
+
+        let project_id = Uuid::now_v7();
+        let template_id = PolicyId::from("template-1".to_string());
+        let link_id = PolicyId::from("link-1".to_string());
+        let link = TemplateLink::new(template_id.clone(), link_id.clone(), HashMap::new());
+
+        let links = vec![link.clone()];
+
+        // Test save
+        db.project_template_links_save(&project_id, &links)
+            .await
+            .expect("Failed to save template links");
+
+        // Test load
+        let query = Query::default();
+        let loaded_page = db
+            .project_template_links_load(&project_id, &query)
+            .await
+            .expect("Failed to load template links");
+        assert_eq!(loaded_page.items.len(), 1);
+        assert_eq!(loaded_page.items[0].new_id, link_id);
+        assert_eq!(loaded_page.items[0].template_id, template_id);
+
+        // Test remove
+        db.project_template_links_remove(&project_id, &vec![link_id.clone()])
+            .await
+            .expect("Failed to remove template links");
+        let loaded_after_remove = db
+            .project_template_links_load(&project_id, &query)
+            .await
+            .expect("Failed to load after remove");
+        assert_eq!(loaded_after_remove.items.len(), 0);
+
+        teardown_test_db(&db).await;
+    }
+
+    #[tokio::test]
+    async fn test_query_limit_and_pagination() {
+        let db = setup_test_db().await;
+
+        let mut items = Vec::with_capacity(3000);
+        let owner = EntityUid::new("User".to_string(), "owner-id".to_string());
+        for i in 0..3000 {
+            let project_id = Uuid::now_v7();
+            let project = Project::new(project_id, format!("mock-project-{}", i), owner.clone());
+            let item = db.project_to_item(&project).expect("Failed to serialize project");
+            items.push(item);
+        }
+
+        db.put_items(items).await.expect("Failed to batch save mock projects");
+
+        // First page query with limit 2000
+        let mut query = Query::default();
+        query.limit = Some(2000);
+
+        let first_page = db.projects_load(&query).await.expect("Failed to load first page of projects");
+        assert_eq!(first_page.items.len(), 2000);
+        assert!(first_page.last_key.is_some());
+
+        // Second page query starting from last_key
+        let last_key = first_page.last_key.unwrap();
+        let mut query_two = Query::default();
+        query_two.limit = Some(2000);
+        query_two.start_key = Some(last_key);
+
+        let second_page = db.projects_load(&query_two).await.expect("Failed to load second page of projects");
+        assert_eq!(second_page.items.len(), 1000);
+
+        teardown_test_db(&db).await;
+    }
 }

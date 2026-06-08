@@ -39,6 +39,5 @@ uuid = { workspace = true }
 [lib]
 path = "src/lib.rs" 
 bench = false
-test = false
 doc = true
 
